@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
 import { VEHICLE_TYPES, ASSUMPTIONS } from "@/lib/calc/assumptions";
-import { calculate, DEFAULT_INPUT, type PlannerInput, type PlannerResult } from "@/lib/calc/model";
-import { qualify, DEFAULT_ANSWERS, type QualifyAnswers, type QualifyResult } from "@/lib/calc/qualify";
-import { nextDeadline, formatDeadline } from "@/lib/calc/deadlines";
+import type { PlannerInput, PlannerResult } from "@/lib/calc/model";
+import type { QualifyAnswers, QualifyResult } from "@/lib/calc/qualify";
 import { int, kr, pct, dec } from "@/lib/format";
-import { startResizeReporting } from "@/lib/embed";
-import type { SiteTheme } from "@/lib/sites";
 import { Slider, Choice } from "./controls";
-import SceneStage from "./scene/SceneStage";
-import LeadForm from "./LeadForm";
-
-const STEPS = ["Kjøretøyene", "Bygg og strøm", "Støttesjekk"] as const;
 
 const ANSWER_OPTIONS = [
   { value: "ja", label: "Ja" },
@@ -20,136 +12,11 @@ const ANSWER_OPTIONS = [
   { value: "usikker", label: "Usikker" },
 ] as const;
 
-export default function Planner({ theme }: { theme: SiteTheme }) {
-  const [input, setInput] = useState<PlannerInput>(DEFAULT_INPUT);
-  const [answers, setAnswers] = useState<QualifyAnswers>(DEFAULT_ANSWERS);
-  const [step, setStep] = useState(0);
-  const [deadline, setDeadline] = useState<ReturnType<typeof nextDeadline>>(null);
-  const resultsRef = useRef<HTMLElement>(null);
-
-  const result = useMemo(() => calculate(input), [input]);
-  const check = useMemo(() => qualify(answers), [answers]);
-
-  useEffect(() => startResizeReporting(), []);
-  useEffect(() => setDeadline(nextDeadline()), []);
-
-  const set = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) =>
-    setInput((prev) => ({ ...prev, [key]: value }));
-  const answer = <K extends keyof QualifyAnswers>(key: K, value: QualifyAnswers[K]) =>
-    setAnswers((prev) => ({ ...prev, [key]: value }));
-
-  const goNext = () => {
-    if (step < STEPS.length - 1) setStep(step + 1);
-    else resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  return (
-    <div className="planner" style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}>
-      <header className="intro">
-        <h1>Hva koster lading på depotet, og kan dere få støtte fra Enova?</h1>
-        <p className="lede">
-          Enova dekker inntil 60 % av ladeanlegget for tunge kjøretøy, opptil 3 millioner kroner per prosjekt.
-          {deadline && (
-            <>
-              {" "}
-              Neste søknadsfrist er <strong>{formatDeadline(deadline.date)} kl. 12</strong>, om {deadline.daysLeft} dager.
-            </>
-          )}
-        </p>
-      </header>
-
-      <section className="studio" aria-label="Kalkulator">
-        <div className="stage">
-          <SceneStage
-            vehicles={input.vehicles}
-            vehicleModel={result.vehicle.model}
-            chargerKw={result.chargerKw}
-            roofM2={input.roofM2}
-            solarCoverage={input.solarCoverage}
-            batteryKwh={input.batteryKwh}
-            gridUpgrade={result.gridDeficitKw > 0}
-            accent={theme.accent}
-            energy={theme.energy}
-          />
-          <dl className="hud">
-            <div>
-              <dt>Ladeeffekt</dt>
-              <dd>
-                {int(result.availableKw)} kW
-                <small>
-                  {result.chargePoints} × {result.chargerKw} kW
-                </small>
-              </dd>
-            </div>
-            <div>
-              <dt>Solceller</dt>
-              <dd>
-                {int(result.solarKwp)} kWp
-                <small>{int(result.annual.solarKwh / 1000)} MWh i året</small>
-              </dd>
-            </div>
-            <div className="hud-support">
-              <dt>Enova-støtte</dt>
-              <dd>
-                {kr(result.support)}
-                <small>{int(result.krPerKw)} kr per kW</small>
-              </dd>
-            </div>
-          </dl>
-          {input.vehicles > 24 && <p className="stage-note">Viser 24 av {input.vehicles} kjøretøy</p>}
-        </div>
-
-        <div className="panel">
-          <nav className="steps" aria-label="Steg">
-            {STEPS.map((s, i) => (
-              <button
-                key={s}
-                type="button"
-                className={i === step ? "is-current" : ""}
-                aria-current={i === step ? "step" : undefined}
-                onClick={() => setStep(i)}
-              >
-                <span className="step-n">{i + 1}</span>
-                {s}
-              </button>
-            ))}
-          </nav>
-
-          <div className="panel-body">
-            {step === 0 && <VehicleStep input={input} result={result} set={set} />}
-            {step === 1 && <BuildingStep input={input} result={result} set={set} />}
-            {step === 2 && <CheckStep answers={answers} answer={answer} />}
-          </div>
-
-          <button type="button" className="btn btn-primary panel-next" onClick={goNext}>
-            {step === 0 ? "Neste: bygg og strøm" : step === 1 ? "Neste: støttesjekk" : "Se resultatet"}
-          </button>
-        </div>
-      </section>
-
-      <section className="results" ref={resultsRef} aria-labelledby="results-title">
-        <h2 id="results-title">Tallene for depotet</h2>
-        <div className="results-grid">
-          <Investment result={result} input={input} set={set} />
-          <Operation result={result} />
-          <Check check={check} />
-        </div>
-        <p className="disclaimer">
-          Tallene er et første anslag basert på typiske priser og forbruk. Endelig pris og søknadsgrunnlag avklares
-          etter befaring og svar fra nettselskapet. Kjøretøyene er ikke med i investeringen.
-        </p>
-      </section>
-
-      <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
-    </div>
-  );
-}
-
 /* ---------------- Steg ---------------- */
 
-type Setter = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) => void;
+export type Setter = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) => void;
 
-function VehicleStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
+export function VehicleStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
   const dwellWarning = result.warnings.find((w) => w.id === "dwell-too-short");
   return (
     <>
@@ -213,8 +80,7 @@ function VehicleStep({ input, result, set }: { input: PlannerInput; result: Plan
   );
 }
 
-function BuildingStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
-  const gridKnown = input.gridSpareKw !== null;
+export function RoofStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
   return (
     <>
       <Slider
@@ -241,6 +107,14 @@ function BuildingStep({ input, result, set }: { input: PlannerInput; result: Pla
             : undefined
         }
       />
+    </>
+  );
+}
+
+export function PowerStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
+  const gridKnown = input.gridSpareKw !== null;
+  return (
+    <>
       <div className="field">
         <div className="field-head">
           <span className="label">Ledig effekt i nettilknytningen</span>
@@ -266,7 +140,7 @@ function BuildingStep({ input, result, set }: { input: PlannerInput; result: Pla
           />
         ) : (
           <p className="field-hint">
-            Vi regner som om nettet holder. Smart Elektro kan sjekke kapasiteten med nettselskapet.
+            Vi regner som om nettet holder. Vi kan sjekke kapasiteten med nettselskapet for dere.
           </p>
         )}
       </div>
@@ -295,7 +169,7 @@ function BuildingStep({ input, result, set }: { input: PlannerInput; result: Pla
   );
 }
 
-function CheckStep({
+export function CheckStep({
   answers,
   answer,
 }: {
@@ -357,7 +231,7 @@ function CheckStep({
 
 /* ---------------- Resultater ---------------- */
 
-function Investment({ result, input, set }: { result: PlannerResult; input: PlannerInput; set: Setter }) {
+export function Investment({ result, input, set }: { result: PlannerResult; input: PlannerInput; set: Setter }) {
   const lines = result.costs.filter((c) => c.cost > 0);
   const cutoff = ASSUMPTIONS.enovaHistoricalCutoffKrPerKw;
   return (
@@ -414,7 +288,7 @@ function Investment({ result, input, set }: { result: PlannerResult; input: Plan
   );
 }
 
-function Operation({ result }: { result: PlannerResult }) {
+export function Operation({ result }: { result: PlannerResult }) {
   const a = result.annual;
   return (
     <article className="card">
@@ -474,7 +348,7 @@ const VERDICT_TEXT: Record<QualifyResult["verdict"], { title: string; body: stri
   "kvalifiserer-ikke": { title: "Kvalifiserer trolig ikke nå", body: "Minst ett krav er ikke oppfylt." },
 };
 
-function Check({ check }: { check: QualifyResult }) {
+export function Check({ check }: { check: QualifyResult }) {
   const v = VERDICT_TEXT[check.verdict];
   return (
     <article className={`card verdict verdict-${check.verdict}`}>

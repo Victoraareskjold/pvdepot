@@ -24,6 +24,7 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 
 - Alle tall og priser ligger i `lib/calc/assumptions.ts`. Ikke hardkod tall i komponenter.
 - Regn i `lib/calc/model.ts` og test i `model.test.ts`.
-- Ikke bruk `vh` inne i appen: høyden sendes til iframen, og `vh` gir en løkke.
+- Appen vises i en iframe med fast høyde (skjermen under menyen) og scroller selv. 3D-verdenen ligger `position: fixed` bak innholdet; kameraet følger seksjonen midt på skjermen (`data-shot`).
+- 3D: `components/world/` (layout, bygg, flåte med ladesyklus, sol med kran, energi, merkelapper). Simuleringen deler status med panelene via `world/live.ts`.
 - Appen skal ikke laste sporingspixler. Sporing og samtykke ligger på nettsiden (Consentify).
 - 3D-scenen er pynt. Kalkylen og skjemaet må virke uten WebGL.

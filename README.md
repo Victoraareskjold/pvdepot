@@ -21,10 +21,12 @@ bun run typecheck
 - **Egen app i iframe**, som Solkartet (pvmap). pvwebsites viser den på
   `/lading` (`src/app/[site]/lading/`), bare for `smartelektrosol`.
 - **Parametre i URL-en:** `site`, `gclid`, `fbclid`, `utm_campaign`.
-- **Meldinger til nettsiden** (`lib/embed.ts`):
-  `resize` (høyde) og `lead` (etter innsending). Nettsiden setter høyden og
-  går til `/takk`, der Consentify/GTM teller konverteringen. Appen laster
-  ingen pixler selv.
+- **Fast høyde:** iframen fyller skjermen under menyen, og appen scroller
+  selv. 3D-verdenen ligger fast bak innholdet, og kameraet glir til det
+  steget som er midt på skjermen.
+- **Melding til nettsiden** (`lib/embed.ts`): `lead` etter innsending.
+  Nettsiden går til `/takk`, der Consentify/GTM teller konverteringen.
+  Appen laster ingen pixler selv.
 - **Leads:** `POST /api/lead` sender videre til pvwebsites
   `/api/leads/create`, så leadet havner i dashboardet med beregningen i
   notatet. Uten `LEADS_API_URL` kjører den i tørrmodus.
@@ -39,9 +41,17 @@ lib/calc/model.ts         Ladebehov, ladere, nett, batteri, sol, Enova, drift.
 lib/calc/qualify.ts       Støttesjekken (krav og styrker).
 lib/calc/deadlines.ts     Enova-frister 2027.
 lib/sites.ts              Farger og navn per nettsted.
-components/Planner.tsx    Siden: steg, resultater.
+components/Experience.tsx Siden: toppfelt, stegskinne, steg, resultater.
+components/sections.tsx   Innholdet i stegene og resultatkortene.
+components/LivePanel.tsx  Ladeplassene i sanntid, lest fra simuleringen.
 components/LeadForm.tsx   Skjemaet og oppsummeringen som sendes med.
-components/scene/         3D-scenen (React Three Fiber), lastes etter tallene.
+components/world/         3D-verdenen (React Three Fiber), lastes etter tallene:
+  layout.ts               Hvor alt står, kjøreruter.
+  Building.tsx Ground.tsx Bygg, gård, vei, trær, gaffeltrucker.
+  Fleet.tsx               Lastebiler og ladere: inn, koble til, lad, ut.
+  Solar.tsx               Paneler som heises på plass av kranen.
+  Energy.tsx              Nettstasjon, ny trafo, batteri, energiflyt.
+  Pins.tsx                Merkelapper som følger tingene i verdenen.
 app/api/lead/route.ts     Videresending av leads.
 ```
 
@@ -50,4 +60,3 @@ app/api/lead/route.ts     Videresending av leads.
 Se `.env.example`. I Vercel: `LEADS_API_URL=https://smartelektrosol.no/api/leads/create`.
 I pvwebsites: `NEXT_PUBLIC_PVDEPOT_URL` hvis appen ikke ligger på
 `https://pvdepot.vercel.app`.
-# pvdepot
