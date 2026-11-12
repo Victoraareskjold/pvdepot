@@ -83,14 +83,18 @@ export function PinTracker({ pins, refs }: { pins: PinDef[]; refs: RefObject<Map
   useFrame(() => {
     const map = refs.current;
     if (!map) return;
-    for (const p of pins) {
-      const el = map.get(p.id);
-      if (!el) continue;
+    // Les størrelsene først, skriv etterpå (unngår ekstra layout-beregning).
+    // Hele piksler, ellers tegner nettleseren teksten uskarpt.
+    const els = pins.map((p) => map.get(p.id));
+    const dims = els.map((el) => (el ? [el.offsetWidth, el.offsetHeight] : [0, 0]));
+    pins.forEach((p, i) => {
+      const el = els[i];
+      if (!el) return;
       v.set(...p.position).project(camera);
-      const x = ((v.x + 1) / 2) * size.width;
-      const y = ((1 - v.y) / 2) * size.height;
-      el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%)`;
-    }
+      const x = Math.round(((v.x + 1) / 2) * size.width - dims[i][0] / 2);
+      const y = Math.round(((1 - v.y) / 2) * size.height - dims[i][1]);
+      el.style.transform = `translate(${x}px, ${y}px)`;
+    });
   });
   return null;
 }

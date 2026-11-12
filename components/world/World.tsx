@@ -28,10 +28,16 @@ export interface WorldProps extends WorldParams {
 export default function World(props: WorldProps) {
   const [small, setSmall] = useState(false);
   const [reduced, setReduced] = useState(false);
-  const [dpr, setDpr] = useState(1.5);
+  // Full skarphet: bruk skjermens pikseltetthet (maks 2). Ytelsesvakten
+  // går bare ned ett hakk, aldri under 1,5 på Retina.
+  const [dprRange, setDprRange] = useState({ high: 2, low: 1.5 });
+  const [dpr, setDpr] = useState(2);
   useEffect(() => {
     setSmall(window.innerWidth < 760);
-    setDpr(Math.min(window.devicePixelRatio || 1, window.innerWidth < 760 ? 1.25 : 1.5));
+    const high = Math.min(window.devicePixelRatio || 1, 2);
+    const low = high >= 2 ? 1.5 : Math.max(1, high * 0.8);
+    setDprRange({ high, low });
+    setDpr(high);
     setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, []);
 
@@ -59,7 +65,12 @@ export default function World(props: WorldProps) {
     >
       <color attach="background" args={[P.ground]} />
       {/* Senk oppløsningen hvis maskinen ikke henger med, øk igjen når den gjør det */}
-      <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(small ? 1.25 : 1.5)} flipflops={3} onFallback={() => setDpr(1)} />
+      <PerformanceMonitor
+        onDecline={() => setDpr(dprRange.low)}
+        onIncline={() => setDpr(dprRange.high)}
+        flipflops={3}
+        onFallback={() => setDpr(dprRange.low)}
+      />
       <Scene {...props} layout={layout} small={small} reduced={reduced} />
       <PinTracker pins={pins} refs={pinRefs} />
     </Canvas>

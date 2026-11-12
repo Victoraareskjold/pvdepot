@@ -5,15 +5,23 @@ import * as THREE from "three";
  * og fargene følger nettstedets tema.
  */
 
-function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
+/**
+ * Tegner i høy oppløsning (scale × logiske piksler) så tekst og kanter er
+ * skarpe også på Retina-skjermer og når kameraet zoomer inn.
+ */
+function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void, scale = 4) {
   const c = document.createElement("canvas");
-  c.width = w;
-  c.height = h;
+  c.width = w * scale;
+  c.height = h * scale;
   const ctx = c.getContext("2d")!;
+  ctx.scale(scale, scale);
   draw(ctx);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = 16;
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
   return t;
 }
 
