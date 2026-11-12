@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { B, C } from "./parts";
 import { P, mat } from "./palette";
@@ -8,7 +8,7 @@ import { hvacUnits, type Layout } from "./layout";
 import { signTexture, wallTexture } from "./textures";
 
 /** Lagerbygget: bølgeblikkvegger, kontorfløy i glass, porter og lasteramper. */
-export default function Building({ layout, accent, sign }: { layout: Layout; accent: string; sign: string }) {
+function Building({ layout, accent, sign }: { layout: Layout; accent: string; sign: string }) {
   const { w, d, h } = layout.building;
 
   const wallMats = useMemo(() => {
@@ -121,3 +121,5 @@ const glassMat = mat(P.glass, { rough: 0.15, metal: 0.3 });
 function matProps(m: THREE.MeshStandardMaterial) {
   return { map: m.map, roughness: m.roughness };
 }
+
+export default memo(Building);

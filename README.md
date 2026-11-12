@@ -49,6 +49,7 @@ components/world/         3D-verdenen (React Three Fiber), lastes etter tallene:
   layout.ts               Hvor alt står, kjøreruter.
   Building.tsx Ground.tsx Bygg, gård, vei, trær, gaffeltrucker.
   Fleet.tsx               Lastebiler og ladere: inn, koble til, lad, ut.
+  sim.ts                  Trafikkstyringen (testes i sim.test.ts).
   Solar.tsx               Paneler som heises på plass av kranen.
   Energy.tsx              Nettstasjon, ny trafo, batteri, energiflyt.
   Pins.tsx                Merkelapper som følger tingene i verdenen.

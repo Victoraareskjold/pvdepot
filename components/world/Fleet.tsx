@@ -1,46 +1,30 @@
 "use client";
 
-import { forwardRef, useEffect, useMemo, useRef } from "react";
+import { forwardRef, memo, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Billboard, RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { B, C } from "./parts";
 import { P, mat } from "./palette";
-import { arrivalPath, BAY_W, CHARGER_Z, departPath, reversePath, type Layout, type VehicleModel } from "./layout";
+import { CHARGER_SIDE, ROW_W, type Layout, type VehicleModel } from "./layout";
+import { buildRoutes, MIN_WAIT, newSim, PHASE_STATE, pose, step, type BaySim, type Pose } from "./sim";
 import { bayTexture, brandTexture } from "./textures";
-import { live, type BayState } from "./live";
+import { live } from "./live";
 import { ease, mulberry } from "./Ground";
 
 /**
- * Ladeplassene: hver plass har en lader og en lastebil som går i sløyfe:
- * kjør inn, koble til, lad, koble fra, rygg ut, kjør videre, ny bil.
+ * Ladeplassene: hver rad har en DC-lader og en lastebil som går i sløyfe:
+ * vent, kjør inn, koble til, lad, koble fra, vent på fri utkjøring, kjør ut.
+ *
+ * Trafikkstyring: bare én bil i innkjøringen og én i utkjøringen om gangen.
+ * Bilene holder fast fart på delte strekninger og bremser bare inne i sin
+ * egen rad, så de kan ikke kjøre inn i hverandre.
  */
 
-type Phase = "wait" | "arrive" | "connect" | "charge" | "disconnect" | "reverse" | "depart";
+/** Hjulrotasjon følger strekningen bilen har kjørt. */
+const wheelDist: number[] = [];
 
-const PHASE_STATE: Record<Phase, BayState> = {
-  wait: "ledig",
-  arrive: "ankommer",
-  connect: "kobler",
-  charge: "lader",
-  disconnect: "ferdig",
-  reverse: "rygger",
-  depart: "kjorer",
-};
-
-interface BaySim {
-  phase: Phase;
-  t: number;
-  dur: number;
-  soc: number;
-  socStart: number;
-  plate: string;
-  dist: number;
-}
-
-const SPEED = 16;
-
-export default function Fleet({
+function Fleet({
   layout,
   model,
   accent,
@@ -59,22 +43,14 @@ export default function Fleet({
     [accent, energy],
   );
   const bayMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({ map: bayTexture("#7fd6a8"), roughness: 0.9, transparent: true, opacity: 0.95 }),
+    () => new THREE.MeshStandardMaterial({ map: bayTexture("#7fd6a8"), roughness: 0.9, transparent: true, opacity: 0.95 }),
     [],
   );
 
-  const paths = useMemo(
-    () =>
-      layout.bays.map((b) => ({
-        arrive: arrivalPath(b.x, layout),
-        reverse: reversePath(b.x, layout),
-        depart: departPath(b.x, layout),
-      })),
-    [layout],
-  );
+  const routes = useMemo(() => buildRoutes(layout), [layout]);
 
   const sims = useRef<BaySim[]>([]);
+  const locks = useRef({ entry: -1, exit: -1 });
   const trucks = useRef<(THREE.Group | null)[]>([]);
   const cables = useRef<(THREE.Mesh | null)[]>([]);
   const screens = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
@@ -83,146 +59,111 @@ export default function Fleet({
   const glows = useRef<(THREE.Mesh | null)[]>([]);
   const wheels = useRef<THREE.Object3D[][]>([]);
 
-  // Start med en levende scene: noen lader allerede, resten kommer etter hvert.
+  // Behold bilene som finnes når oppsettet endres; legg bare til eller fjern plasser.
   useEffect(() => {
     const rnd = mulberry(11 + n);
-    sims.current = layout.bays.map((_, i) => {
-      const plate = `EL ${String(10 + ((i * 37) % 89)).padStart(2, "0")}${String((i * 523) % 1000).padStart(3, "0")}`;
-      if (reduced || i % 3 !== 2) {
-        const soc = 0.25 + rnd() * 0.6;
-        return { phase: "charge", t: 0, dur: chargeTime(soc, 0.2), soc, socStart: soc, plate, dist: 0 };
+    const list = sims.current;
+    if (list.length > n) {
+      list.length = n;
+      if (locks.current.entry >= n) locks.current.entry = -1;
+      if (locks.current.exit >= n) locks.current.exit = -1;
+    }
+    const firstFill = list.length === 0;
+    for (let i = list.length; i < n; i++) list.push(newSim(i, firstFill, rnd, reduced));
+    // Biler som var på vei inn eller ut da rutene endret seg, starter på nytt utenfor bildet.
+    for (const s of list) {
+      if (s.phase === "arrive" || s.phase === "depart") {
+        s.phase = "wait";
+        s.t = 0;
+        s.dur = MIN_WAIT + rnd() * 2;
       }
-      return { phase: "wait", t: 0, dur: 1 + rnd() * 5, soc: 0.2, socStart: 0.2, plate, dist: 0 };
-    });
+    }
+    locks.current.entry = -1;
+    locks.current.exit = -1;
+    if (live.bays.length !== n) {
+      live.bays = list.map((s, i) => ({ id: i + 1, plate: s.plate, state: PHASE_STATE[s.phase], soc: s.soc }));
+    }
   }, [layout, n, reduced]);
 
   const cableGeos = useMemo(
     () =>
       layout.bays.map((b) => {
-        const socket = new THREE.Vector3(b.x + 1.9, 1.45, CHARGER_Z + 0.35);
-        const port = new THREE.Vector3(b.x + 1.3, 1.35, CHARGER_Z + 2.8);
+        const cz = b.z + CHARGER_SIDE;
+        const socket = new THREE.Vector3(layout.chargerX - 0.1, 1.45, cz + 0.36);
+        const port = new THREE.Vector3(layout.xPark + layout.truckLen / 2 - 1.2, 1.35, b.z - 1.3);
         const curve = new THREE.CubicBezierCurve3(
           socket,
-          new THREE.Vector3(b.x + 2.2, 0.15, CHARGER_Z + 0.9),
-          new THREE.Vector3(b.x + 1.8, 0.2, CHARGER_Z + 2.5),
+          new THREE.Vector3(socket.x + 0.4, 0.15, cz + 0.6),
+          new THREE.Vector3(port.x + 0.6, 0.2, b.z - 1.6),
           port,
         );
-        return new THREE.TubeGeometry(curve, 40, 0.07, 6, false);
+        return new THREE.TubeGeometry(curve, 32, 0.07, 6, false);
       }),
-    [layout.bays],
+    [layout],
   );
 
-  const tmpP = useMemo(() => new THREE.Vector3(), []);
-  const tmpT = useMemo(() => new THREE.Vector3(), []);
-  const charging = useMemo(() => new THREE.Color(P.charge), []);
-  const idle = useMemo(() => new THREE.Color("#7f8db0"), []);
-  const busy = useMemo(() => new THREE.Color("#ffc12e"), []);
-  const done = useMemo(() => new THREE.Color("#4d8bff"), []);
+  const colors = useMemo(
+    () => ({
+      charging: new THREE.Color(P.charge),
+      idle: new THREE.Color("#7f8db0"),
+      busy: new THREE.Color("#ffc12e"),
+      done: new THREE.Color("#4d8bff"),
+    }),
+    [],
+  );
+
+  const ps = useMemo<Pose>(() => ({ visible: false, x: 0, z: 0, yaw: 0 }), []);
 
   useFrame(({ clock }, rawDt) => {
     const dt = Math.min(rawDt, 0.1);
     const time = clock.elapsedTime;
     const list = sims.current;
-    if (list.length !== n) return;
+    if (list.length !== n || routes.length !== n) return;
+
+    step(list, routes, locks.current, dt);
 
     for (let i = 0; i < n; i++) {
       const s = list[i];
       const g = trucks.current[i];
-      s.t += dt;
-
-      // Neste fase
-      if (s.t >= s.dur) {
-        s.t = 0;
-        switch (s.phase) {
-          case "wait":
-            s.phase = "arrive";
-            s.dur = paths[i].arrive.getLength() / SPEED;
-            s.socStart = s.soc = 0.15 + Math.random() * 0.3;
-            break;
-          case "arrive":
-            s.phase = "connect";
-            s.dur = 1.4;
-            break;
-          case "connect":
-            s.phase = "charge";
-            s.dur = chargeTime(s.soc, 0.6);
-            s.socStart = s.soc;
-            break;
-          case "charge":
-            s.phase = "disconnect";
-            s.dur = 1.1;
-            s.soc = 1;
-            break;
-          case "disconnect":
-            s.phase = "reverse";
-            s.dur = paths[i].reverse.getLength() / 4.5;
-            break;
-          case "reverse":
-            s.phase = "depart";
-            s.dur = paths[i].depart.getLength() / SPEED;
-            break;
-          case "depart":
-            s.phase = "wait";
-            s.dur = 1.5 + Math.random() * 4;
-            s.plate = nextPlate(s.plate);
-            break;
-        }
-      }
-
-      const k = s.t / s.dur;
-      let cableK = 0;
-
       if (g) {
-        g.visible = s.phase !== "wait";
-        let prevX = g.position.x;
-        let prevZ = g.position.z;
-        if (s.phase === "arrive") {
-          const u = easeOut(k);
-          paths[i].arrive.getPointAt(u, tmpP);
-          paths[i].arrive.getTangentAt(u, tmpT);
-          setTruck(g, tmpP, tmpT, false);
-        } else if (s.phase === "reverse") {
-          const u = ease(k);
-          paths[i].reverse.getPointAt(u, tmpP);
-          paths[i].reverse.getTangentAt(u, tmpT);
-          setTruck(g, tmpP, tmpT, true);
-        } else if (s.phase === "depart") {
-          const u = k * k;
-          paths[i].depart.getPointAt(u, tmpP);
-          paths[i].depart.getTangentAt(u, tmpT);
-          setTruck(g, tmpP, tmpT, false);
-        } else if (s.phase !== "wait") {
-          g.position.set(layout.bays[i].x, 0, layout.parkZ);
-          g.rotation.y = Math.PI / 2;
+        const px = g.position.x;
+        const pz = g.position.z;
+        pose(s, routes[i], layout.bays[i].z, layout, ps);
+        g.visible = ps.visible;
+        if (ps.visible) {
+          g.position.set(ps.x, 0, ps.z);
+          g.rotation.y = ps.yaw;
+          const moved = Math.hypot(ps.x - px, ps.z - pz);
+          if (moved < 5) wheelDist[i] = (wheelDist[i] ?? 0) + moved;
+          const ws = wheels.current[i];
+          if (ws) for (const w of ws) w.rotation.z = -(wheelDist[i] ?? 0) / 0.52;
         }
-        // Hjulene ruller med strekningen
-        const moved = Math.hypot(g.position.x - prevX, g.position.z - prevZ);
-        if (moved < 5) s.dist += s.phase === "reverse" ? -moved : moved;
-        prevX = g.position.x;
-        prevZ = g.position.z;
-        const ws = wheels.current[i];
-        if (ws) for (const w of ws) w.rotation.z = -s.dist / 0.52;
       }
 
+      let cableK = 0;
+      const k = s.dur > 0 ? Math.min(1, s.t / s.dur) : 1;
       if (s.phase === "connect") cableK = ease(k);
       else if (s.phase === "charge") cableK = 1;
       else if (s.phase === "disconnect") cableK = 1 - ease(k);
-
-      if (s.phase === "charge") s.soc = s.socStart + (1 - s.socStart) * k;
 
       const cable = cables.current[i];
       if (cable) {
         const geo = cable.geometry as THREE.TubeGeometry;
         const count = geo.index ? geo.index.count : 0;
-        const segs = Math.floor((count / 6) * cableK) * 6;
-        geo.setDrawRange(0, segs);
+        geo.setDrawRange(0, Math.floor((count / 6) * cableK) * 6);
         cable.visible = cableK > 0.01;
       }
 
       const screen = screens.current[i];
       if (screen) {
         const c =
-          s.phase === "charge" ? charging : s.phase === "connect" ? busy : s.phase === "disconnect" ? done : idle;
+          s.phase === "charge"
+            ? colors.charging
+            : s.phase === "connect"
+              ? colors.busy
+              : s.phase === "disconnect" || s.phase === "ready"
+                ? colors.done
+                : colors.idle;
         screen.emissive.copy(c);
         screen.color.copy(c);
         screen.emissiveIntensity = s.phase === "charge" ? 0.9 + Math.sin(time * 4 + i) * 0.35 : 0.6;
@@ -230,11 +171,12 @@ export default function Fleet({
 
       const bar = bars.current[i];
       if (bar) {
-        bar.visible = s.phase === "connect" || s.phase === "charge" || s.phase === "disconnect";
+        bar.visible = s.phase === "connect" || s.phase === "charge" || s.phase === "disconnect" || s.phase === "ready";
         const fill = fills.current[i];
         if (fill) {
-          fill.scale.x = Math.max(0.02, s.soc);
-          fill.position.x = -1.2 + 1.2 * Math.max(0.02, s.soc);
+          const f = Math.max(0.02, s.soc);
+          fill.scale.x = f;
+          fill.position.x = -1.2 + 1.2 * f;
         }
       }
 
@@ -248,24 +190,24 @@ export default function Fleet({
           (glow.material as THREE.MeshBasicMaterial).opacity = 0.45 * (1 - pulse);
         }
       }
-    }
 
-    // Del tilstanden med panelene
-    live.bays = list.map((s, i) => ({ id: i + 1, plate: s.plate, state: PHASE_STATE[s.phase], soc: s.soc }));
+      // Del tilstanden med panelene uten å lage nye objekter hver frame.
+      const lb = live.bays[i];
+      if (lb) {
+        lb.plate = s.plate;
+        lb.state = PHASE_STATE[s.phase];
+        lb.soc = s.soc;
+      }
+    }
   });
 
   return (
     <group>
       {layout.bays.map((b, i) => (
         <group key={i}>
-          {/* Malt ladeplass */}
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[b.x, 0.02, layout.parkZ]}
-            material={bayMat}
-            receiveShadow
-          >
-            <planeGeometry args={[BAY_W - 0.7, layout.truckLen + 1.6]} />
+          {/* Malt ladeplass langs raden */}
+          <mesh rotation={[-Math.PI / 2, 0, -Math.PI / 2]} position={[layout.xPark, 0.02, b.z]} material={bayMat} receiveShadow>
+            <planeGeometry args={[ROW_W - 0.8, layout.truckLen + 2]} />
           </mesh>
           {/* Puls på bakken mens bilen lader */}
           <mesh
@@ -273,20 +215,22 @@ export default function Fleet({
               glows.current[i] = m;
             }}
             rotation={[-Math.PI / 2, 0, 0]}
-            position={[b.x + 1.9, 0.04, CHARGER_Z + 0.2]}
+            position={[layout.chargerX, 0.04, b.z + CHARGER_SIDE]}
           >
             <ringGeometry args={[0.6, 0.8, 32]} />
             <meshBasicMaterial color={P.charge} transparent opacity={0.4} depthWrite={false} />
           </mesh>
           <Charger
-            x={b.x + 1.9}
+            x={layout.chargerX}
+            z={b.z + CHARGER_SIDE}
             energy={energy}
             screenRef={(m) => {
               screens.current[i] = m;
             }}
           />
-          {/* Påkjøringsvern */}
-          <C p={[b.x - 1.6, 0.45, CHARGER_Z + 0.2]} s={[0.12, 0.9, 0.12]} c={P.lineYellow} />
+          {/* Påkjøringsvern foran laderen */}
+          <C p={[layout.chargerX + 0.9, 0.45, b.z + CHARGER_SIDE]} s={[0.12, 0.9, 0.12]} c={P.lineYellow} />
+          <C p={[layout.chargerX - 0.9, 0.45, b.z + CHARGER_SIDE]} s={[0.12, 0.9, 0.12]} c={P.lineYellow} />
           <mesh
             ref={(m) => {
               cables.current[i] = m;
@@ -320,37 +264,26 @@ export default function Fleet({
   );
 }
 
-function chargeTime(soc: number, base: number) {
-  return 4 + (1 - soc) * 13 + base * 4;
-}
+export default memo(Fleet);
 
-function nextPlate(p: string) {
-  const num = (parseInt(p.slice(-3), 10) + 137) % 1000;
-  return `${p.slice(0, -3)}${String(num).padStart(3, "0")}`;
-}
 
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 2.2);
 
-function setTruck(g: THREE.Group, p: THREE.Vector3, t: THREE.Vector3, reversing: boolean) {
-  g.position.set(p.x, 0, p.z);
-  const tx = reversing ? -t.x : t.x;
-  const tz = reversing ? -t.z : t.z;
-  g.rotation.y = Math.atan2(-tz, tx);
-}
 
 /* ---------------------------- Lader ---------------------------- */
 
 function Charger({
   x,
+  z,
   energy,
   screenRef,
 }: {
   x: number;
+  z: number;
   energy: string;
   screenRef: (m: THREE.MeshStandardMaterial | null) => void;
 }) {
   return (
-    <group position={[x, 0, CHARGER_Z]}>
+    <group position={[x, 0, z]}>
       <B p={[0, 0.1, 0]} s={[1.1, 0.2, 0.9]} c="#c6cede" />
       <RoundedBox args={[0.85, 2.3, 0.6]} radius={0.12} smoothness={3} position={[0, 1.35, 0]} castShadow receiveShadow>
         <meshStandardMaterial color={P.charger} roughness={0.35} />
@@ -454,7 +387,7 @@ const Truck = forwardRef<THREE.Group, TruckProps>(function Truck(
           {/* Takspoiler */}
           <B p={[nose - 1.4, 3.75, 0]} s={[1.1, 0.4, W - 0.2]} c={accent} rough={0.4} />
           {/* Ladeport (lyser grønt) */}
-          <mesh position={[nose - 1.2, 1.35, W / 2 + 0.02]}>
+          <mesh position={[nose - 1.2, 1.35, -W / 2 - 0.02]}>
             <boxGeometry args={[0.3, 0.3, 0.04]} />
             <meshStandardMaterial color={P.charge} emissive={P.charge} emissiveIntensity={0.7} />
           </mesh>
@@ -498,7 +431,6 @@ const Truck = forwardRef<THREE.Group, TruckProps>(function Truck(
               <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, side * 0.22]} material={mat(P.rim, { rough: 0.4, metal: 0.4 })}>
                 <cylinderGeometry args={[0.26, 0.26, 0.02, 12]} />
               </mesh>
-              <B p={[0, 0, side * 0.235]} s={[0.44, 0.08, 0.01]} c="#8792a8" shadow={false} />
             </group>
           </group>
         )),

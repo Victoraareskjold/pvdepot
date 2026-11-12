@@ -1,9 +1,10 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { PerformanceMonitor } from "@react-three/drei";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { computeLayout, CHARGER_Z, type Layout, type WorldParams } from "./layout";
+import { computeLayout, TURN_R, type Layout, type WorldParams } from "./layout";
 import Building from "./Building";
 import Ground, { DockYard } from "./Ground";
 import Fleet from "./Fleet";
@@ -27,8 +28,10 @@ export interface WorldProps extends WorldParams {
 export default function World(props: WorldProps) {
   const [small, setSmall] = useState(false);
   const [reduced, setReduced] = useState(false);
+  const [dpr, setDpr] = useState(1.5);
   useEffect(() => {
     setSmall(window.innerWidth < 760);
+    setDpr(Math.min(window.devicePixelRatio || 1, window.innerWidth < 760 ? 1.25 : 1.5));
     setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, []);
 
@@ -45,12 +48,18 @@ export default function World(props: WorldProps) {
     <Canvas
       orthographic
       shadows={{ type: THREE.PCFSoftShadowMap }}
-      dpr={small ? [1, 1.5] : [1, 2]}
+      dpr={dpr}
       camera={{ position: [80, 70, 80], zoom: 10, near: -500, far: 1000 }}
       gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping, powerPreference: "high-performance" }}
       aria-hidden
+      onCreated={({ gl }) => {
+        // ?debug=1 i URL-en gir tilgang til tegnestatistikk i konsollen (window.__gl.info).
+        if (window.location.search.includes("debug")) (window as unknown as { __gl: unknown }).__gl = gl;
+      }}
     >
       <color attach="background" args={[P.ground]} />
+      {/* Senk oppløsningen hvis maskinen ikke henger med, øk igjen når den gjør det */}
+      <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(small ? 1.25 : 1.5)} flipflops={3} onFallback={() => setDpr(1)} />
       <Scene {...props} layout={layout} small={small} reduced={reduced} />
       <PinTracker pins={pins} refs={pinRefs} />
     </Canvas>
@@ -134,6 +143,7 @@ function Sun({ layout, small }: { layout: Layout; small: boolean }) {
 }
 
 const DIR = new THREE.Vector3(1, 0.86, 1).normalize();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 /** Kameraet står fast i vinkel, men glir og zoomer mellom stegene. */
 function CameraRig({
@@ -150,18 +160,13 @@ function CameraRig({
   const { camera, size } = useThree();
   const target = useRef(new THREE.Vector3());
   const zoom = useRef(0);
-  const right = useMemo(() => new THREE.Vector3(), []);
-  const up = useMemo(() => new THREE.Vector3(), []);
+  const dir = useMemo(() => new THREE.Vector3(), []);
 
-  const box = useMemo(() => focusBox(layout, shot), [layout, shot]);
-
-  useFrame(({ clock }, dt) => {
-    const cam = camera as THREE.OrthographicCamera;
-    // Kameraets akser
-    right.set(1, 0, -1).normalize();
-    up.crossVectors(right, DIR).negate().normalize();
-
-    // Hvor stort utsnitt trengs for boksen?
+  // Mål for kameraet regnes bare ut når steg, oppsett eller skjerm endres.
+  const goal = useMemo(() => {
+    const box = focusBox(layout, shot);
+    const right = new THREE.Vector3(1, 0, -1).normalize();
+    const up = new THREE.Vector3().crossVectors(right, DIR).negate().normalize();
     let minR = Infinity,
       maxR = -Infinity,
       minU = Infinity,
@@ -180,25 +185,26 @@ function CameraRig({
         }
     const availW = Math.max(200, size.width - inset.left - 24);
     const availH = Math.max(200, size.height - inset.top - inset.bottom - 24);
-    const wantZoom = Math.min(availW / (maxR - minR), availH / (maxU - minU));
-
-    const center = box.getCenter(new THREE.Vector3());
+    const z = Math.min(availW / (maxR - minR), availH / (maxU - minU));
     // Flytt midten så scenen havner i den ledige delen av skjermen.
-    const ox = inset.left / 2;
-    const oy = (inset.top - inset.bottom) / 2;
-    const wantTarget = center
-      .clone()
-      .addScaledVector(right, -ox / wantZoom)
-      .addScaledVector(up, oy / wantZoom);
+    const t = box
+      .getCenter(new THREE.Vector3())
+      .addScaledVector(right, -inset.left / 2 / z)
+      .addScaledVector(up, (inset.top - inset.bottom) / 2 / z);
+    return { zoom: z, target: t };
+  }, [layout, shot, size.width, size.height, inset.left, inset.top, inset.bottom]);
 
-    const k = zoom.current === 0 || reduced ? 1 : 1 - Math.exp(-dt * 2.2);
-    if (zoom.current === 0) zoom.current = wantZoom * 0.82;
-    zoom.current += (wantZoom - zoom.current) * k;
-    target.current.lerp(wantTarget, k);
+  useFrame(({ clock }, dt) => {
+    const cam = camera as THREE.OrthographicCamera;
+    const first = zoom.current === 0;
+    const k = first || reduced ? 1 : 1 - Math.exp(-Math.min(dt, 0.1) * 2.2);
+    zoom.current += (goal.zoom - zoom.current) * k;
+    if (first) target.current.copy(goal.target);
+    else target.current.lerp(goal.target, k);
 
     // Lett, langsom svai så verdenen føles levende
     const sway = reduced ? 0 : Math.sin(clock.elapsedTime * 0.08) * 0.05;
-    const dir = DIR.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), sway);
+    dir.copy(DIR).applyAxisAngle(Y_AXIS, sway);
     cam.position.copy(target.current).addScaledVector(dir, 200);
     cam.zoom = zoom.current;
     cam.lookAt(target.current);
@@ -210,23 +216,19 @@ function CameraRig({
 
 function focusBox(l: Layout, shot: Shot): THREE.Box3 {
   const { bounds: b, building: bd, bays } = l;
-  const first = bays[0]?.x ?? 0;
-  const last = bays[bays.length - 1]?.x ?? 0;
+  const lastZ = bays[bays.length - 1]?.z ?? 8;
   switch (shot) {
     case "fleet":
-      return new THREE.Box3(new THREE.Vector3(first - 6, 0, CHARGER_Z - 3), new THREE.Vector3(last + 6, 5, l.roadZ + 3));
+      return new THREE.Box3(new THREE.Vector3(l.xIn - TURN_R / 2, 0, 1), new THREE.Vector3(l.xOut + TURN_R / 2, 5, lastZ + 5));
     case "roof":
-      return new THREE.Box3(
-        new THREE.Vector3(Math.min(-bd.w / 2, l.crane.x - 3), 0, -bd.d - 1),
-        new THREE.Vector3(bd.w / 2 + 2, bd.h + 4, 3),
-      );
+      return new THREE.Box3(new THREE.Vector3(-bd.w / 2, 0, -bd.d - 1), new THREE.Vector3(Math.max(bd.w / 2 + 2, l.crane.x + 3), bd.h + 4, 8));
     case "energy":
       return new THREE.Box3(
-        new THREE.Vector3(b.minX + 2, 0, l.transformer.z - 8),
-        new THREE.Vector3(Math.max(first + 10, -bd.w / 2 + 20), 4, CHARGER_Z + l.truckLen + 2),
+        new THREE.Vector3(b.minX + 2, 0, -bd.d * 0.75),
+        new THREE.Vector3(l.chargerX + 4, 4, Math.min(lastZ + 2, 22)),
       );
     case "hero":
-      return new THREE.Box3(new THREE.Vector3(b.minX + 8, 0, -bd.d), new THREE.Vector3(b.maxX - 4, bd.h, l.roadZ));
+      return new THREE.Box3(new THREE.Vector3(b.minX + 6, 0, -bd.d), new THREE.Vector3(b.maxX - 4, bd.h, l.roadZ));
     default:
       return new THREE.Box3(new THREE.Vector3(b.minX + 4, 0, b.minZ), new THREE.Vector3(b.maxX - 2, bd.h, b.maxZ - 2));
   }

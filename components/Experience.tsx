@@ -12,7 +12,7 @@ import LeadForm from "./LeadForm";
 import { Check, CheckStep, Investment, Operation, PowerStep, RoofStep, VehicleStep } from "./sections";
 import type { Shot } from "./world/World";
 
-const MAX_BAYS = 12;
+const MAX_BAYS = 8;
 
 const STEPS: { id: Shot; label: string }[] = [
   { id: "fleet", label: "Flåten" },
@@ -31,6 +31,23 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
 
   const result = useMemo(() => calculate(input), [input]);
   const check = useMemo(() => qualify(answers), [answers]);
+
+  const labels = useMemo(
+    () => ({
+      chargers: `${result.chargePoints} × ${result.chargerKw} kW`,
+      solar: result.solarKwp > 0 ? `${int(result.solarKwp)} kWp` : undefined,
+      battery: input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
+      control:
+        input.batteryKwh > 0 ? "Laststyring og frekvensmarked" : result.solarKwp > 0 ? "Sol og laststyring" : undefined,
+      grid:
+        result.gridDeficitKw > 0
+          ? `+${int(result.gridDeficitKw)} kW`
+          : input.gridSpareKw !== null
+            ? `${int(input.gridSpareKw)} kW ledig`
+            : undefined,
+    }),
+    [result.chargePoints, result.chargerKw, result.solarKwp, result.gridDeficitKw, input.batteryKwh, input.gridSpareKw],
+  );
 
   const set = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }));
@@ -83,17 +100,7 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
         accent={theme.accent}
         energy={theme.energy}
         sign="DITT DEPOT"
-        labels={{
-          chargers: `${result.chargePoints} × ${result.chargerKw} kW`,
-          solar: result.solarKwp > 0 ? `${int(result.solarKwp)} kWp` : undefined,
-          battery: input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
-          grid:
-            result.gridDeficitKw > 0
-              ? `+${int(result.gridDeficitKw)} kW`
-              : input.gridSpareKw !== null
-                ? `${int(input.gridSpareKw)} kW ledig`
-                : undefined,
-        }}
+        labels={labels}
         inset={inset}
       />
       <div className="veil" aria-hidden />

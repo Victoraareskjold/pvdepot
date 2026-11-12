@@ -3,13 +3,14 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, type RefObject } from "react";
 import * as THREE from "three";
-import { CHARGER_Z, type Layout } from "./layout";
+import { CHARGER_SIDE, type Layout } from "./layout";
 
 export interface PinLabels {
   chargers: string;
   solar?: string;
   battery?: string;
   grid?: string;
+  control?: string;
 }
 
 export interface PinDef {
@@ -22,11 +23,17 @@ export interface PinDef {
 
 /** Hvilke merkelapper som vises, og hvor de henger i verdenen. */
 export function pinDefs(layout: Layout, labels: PinLabels): PinDef[] {
-  const { building: b, bays, battery, transformer } = layout;
+  const { building: b, bays, battery, transformer, inverter } = layout;
   const out: PinDef[] = [];
   if (bays.length) {
-    const mid = (bays[0].x + bays[bays.length - 1].x) / 2;
-    out.push({ id: "chargers", position: [mid, 7, CHARGER_Z], tone: "charge", title: "Ladere", value: labels.chargers });
+    const mid = (bays[0].z + bays[bays.length - 1].z) / 2;
+    out.push({
+      id: "chargers",
+      position: [layout.chargerX, 4.6, mid + CHARGER_SIDE],
+      tone: "charge",
+      title: "DC-ladere",
+      value: labels.chargers,
+    });
   }
   if (labels.solar) {
     out.push({
@@ -38,7 +45,24 @@ export function pinDefs(layout: Layout, labels: PinLabels): PinDef[] {
     });
   }
   if (battery && labels.battery) {
-    out.push({ id: "battery", position: [battery.x, 5, battery.z], tone: "charge", title: "Batteri", value: labels.battery });
+    const xs = battery.slots.map((sl) => sl.x);
+    const zs = battery.slots.map((sl) => sl.z);
+    out.push({
+      id: "battery",
+      position: [(Math.min(...xs) + Math.max(...xs)) / 2, 4.4, (Math.min(...zs) + Math.max(...zs)) / 2],
+      tone: "charge",
+      title: "Batteri",
+      value: labels.battery,
+    });
+  }
+  if (labels.control) {
+    out.push({
+      id: "control",
+      position: [inverter.x, 3.6, inverter.z],
+      tone: "energy",
+      title: "Inverter og styring",
+      value: labels.control,
+    });
   }
   if (labels.grid) {
     out.push({

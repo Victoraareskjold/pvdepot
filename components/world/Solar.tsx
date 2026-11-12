@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { B, C } from "./parts";
@@ -18,11 +18,11 @@ import { live } from "./live";
 const FLY = 1.15;
 const REMOVE = 0.35;
 
-export default function Solar({ layout, coverage, reduced }: { layout: Layout; coverage: number; reduced: boolean }) {
+function Solar({ layout, coverage, reduced }: { layout: Layout; coverage: number; reduced: boolean }) {
   const slots = layout.roofSlots;
   const total = slots.length;
   const target = Math.round(total * Math.max(0, Math.min(1, coverage)));
-  const { w, h, d } = layout.building;
+  const { h } = layout.building;
 
   const mesh = useRef<THREE.InstancedMesh>(null);
   const boom = useRef<THREE.Group>(null);
@@ -54,13 +54,14 @@ export default function Solar({ layout, coverage, reduced }: { layout: Layout; c
       for (let i = 0; i < total; i++) mesh.current.setMatrixAt(i, m);
       mesh.current.instanceMatrix.needsUpdate = true;
     }
-  }, [total, layout]);
+  }, [total, layout.roofKey]);
 
   const crane = layout.crane;
   const pivot = useMemo(() => new THREE.Vector3(crane.x, 3.2, crane.z), [crane.x, crane.z]);
   const stack = useMemo(() => new THREE.Vector3(crane.x + 3.2, 1.2, crane.z + 3.5), [crane.x, crane.z]);
   const tmpM = useMemo(() => new THREE.Matrix4(), []);
   const tmpQ = useMemo(() => new THREE.Quaternion(), []);
+  const tmpE = useMemo(() => new THREE.Euler(), []);
   const tilt = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.18, 0, 0)), []);
   const tmpV = useMemo(() => new THREE.Vector3(), []);
   const tmpS = useMemo(() => new THREE.Vector3(), []);
@@ -135,7 +136,8 @@ export default function Solar({ layout, coverage, reduced }: { layout: Layout; c
           curve.v2.copy(slot);
           curve.getPoint(e, tmpV);
           // Panelet svinger litt mens det heises
-          tmpQ.setFromEuler(new THREE.Euler(-0.18 * e, (1 - e) * 0.8, Math.sin(k * 9) * 0.12 * (1 - e)));
+          tmpE.set(-0.18 * e, (1 - e) * 0.8, Math.sin(k * 9) * 0.12 * (1 - e));
+          tmpQ.setFromEuler(tmpE);
         } else {
           tmpV.copy(slot);
           tmpQ.copy(tilt);
@@ -170,9 +172,6 @@ export default function Solar({ layout, coverage, reduced }: { layout: Layout; c
     <group>
       <instancedMesh ref={mesh} args={[geometry, material, Math.max(1, total)]} castShadow receiveShadow frustumCulled={false} />
 
-      {/* Vekselretter på fasaden, kabel ned i grunnen */}
-      <B p={[-w / 2 + 16.5, 3, 0.25]} s={[1.4, 1.8, 0.4]} c="#ffffff" />
-      <B p={[-w / 2 + 16.5, 3.4, 0.46]} s={[0.9, 0.3, 0.02]} c={P.charge} shadow={false} />
 
       {/* Kranbil */}
       <group position={[crane.x, 0, crane.z]}>
@@ -217,7 +216,8 @@ export default function Solar({ layout, coverage, reduced }: { layout: Layout; c
       <B p={[crane.x, 0.5, crane.z + 6]} s={[8, 0.08, 0.08]} c={P.cone} shadow={false} />
       <B p={[crane.x - 4, 0.25, crane.z + 6]} s={[0.1, 0.5, 0.1]} c={P.cone} />
       <B p={[crane.x + 4, 0.25, crane.z + 6]} s={[0.1, 0.5, 0.1]} c={P.cone} />
-      {void d}
     </group>
   );
 }
+
+export default memo(Solar);
