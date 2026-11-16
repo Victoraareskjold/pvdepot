@@ -116,6 +116,8 @@ export const ASSUMPTIONS = {
   enovaMaxSupport: 3_000_000,
   /** Driftsplikt på samme lokasjon */
   enovaOperatingYears: 5,
+  /** Periode for «spart over N år» (ladere og batteri varer typisk 10–15 år) */
+  analysisYears: 10,
   /**
    * Hittil laveste vinnende kr per kW i forrige runde. Hent tallet fra
    * Enovas Power BI-statistikk. null = vis ikke sammenligning.

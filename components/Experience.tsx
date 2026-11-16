@@ -1,53 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
 import { qualify, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
 import { nextDeadline, formatDeadline } from "@/lib/calc/deadlines";
-import { int, kr } from "@/lib/format";
+import { VEHICLE_TYPES } from "@/lib/calc/assumptions";
+import { int } from "@/lib/format";
 import type { SiteTheme } from "@/lib/sites";
-import WorldStage from "./WorldStage";
-import LivePanel from "./LivePanel";
 import LeadForm from "./LeadForm";
-import { Check, CheckStep, Investment, Operation, PowerStep, RoofStep, VehicleStep } from "./sections";
-import type { Shot } from "./world/World";
+import KeyFigures from "./KeyFigures";
+import ScrollWorld from "./ScrollWorld";
+import Carousel from "./Carousel";
+import { Choice, Slider } from "./controls";
+import { Check, CheckStep, Investment, Operation } from "./sections";
 
-const MAX_BAYS = 8;
-
-const STEPS: { id: Shot; label: string }[] = [
-  { id: "fleet", label: "Flåten" },
-  { id: "roof", label: "Tak og sol" },
-  { id: "energy", label: "Strøm og batteri" },
-  { id: "check", label: "Støttesjekk" },
-  { id: "results", label: "Tallene" },
-];
-
+/**
+ * Siden, ovenfra og ned som i skissen:
+ * hook og nøkkeltall, slidere, 3D-depotet som scroll-seksjon,
+ * bildekarusell, støttesjekk og skjema.
+ */
 export default function Experience({ theme }: { theme: SiteTheme }) {
   const [input, setInput] = useState<PlannerInput>(DEFAULT_INPUT);
   const [answers, setAnswers] = useState<QualifyAnswers>(DEFAULT_ANSWERS);
-  const [shot, setShot] = useState<Shot>("hero");
   const [deadline, setDeadline] = useState<ReturnType<typeof nextDeadline>>(null);
-  const [inset, setInset] = useState({ left: 0, top: 72, bottom: 0 });
+  const [details, setDetails] = useState(false);
 
   const result = useMemo(() => calculate(input), [input]);
   const check = useMemo(() => qualify(answers), [answers]);
-
-  const labels = useMemo(
-    () => ({
-      chargers: `${result.chargePoints} × ${result.chargerKw} kW`,
-      solar: result.solarKwp > 0 ? `${int(result.solarKwp)} kWp` : undefined,
-      battery: input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
-      control:
-        input.batteryKwh > 0 ? "Laststyring og frekvensmarked" : result.solarKwp > 0 ? "Sol og laststyring" : undefined,
-      grid:
-        result.gridDeficitKw > 0
-          ? `+${int(result.gridDeficitKw)} kW`
-          : input.gridSpareKw !== null
-            ? `${int(input.gridSpareKw)} kW ledig`
-            : undefined,
-    }),
-    [result.chargePoints, result.chargerKw, result.solarKwp, result.gridDeficitKw, input.batteryKwh, input.gridSpareKw],
-  );
 
   const set = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }));
@@ -56,207 +35,178 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
 
   useEffect(() => setDeadline(nextDeadline()), []);
 
-  // Hvilken seksjon er midt på skjermen? Den styrer kameraet.
-  useEffect(() => {
-    const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-shot]"));
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) if (e.isIntersecting) setShot(e.target.getAttribute("data-shot") as Shot);
-      },
-      // På mobil ligger innholdet under verdenen, så «midten» er lenger ned.
-      { rootMargin: window.innerWidth < 900 ? "-66% 0px -32% 0px" : "-48% 0px -48% 0px" },
-    );
-    sections.forEach((s) => io.observe(s));
-    return () => io.disconnect();
-  }, []);
-
-  // Hvor mye av skjermen panelene dekker, så scenen sentreres i resten.
-  useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      if (w < 900) setInset({ left: 0, top: 64, bottom: Math.round(h * 0.04) });
-      else setInset({ left: Math.min(560, Math.round(w * 0.4)), top: 84, bottom: w > 1080 ? 120 : 0 });
-    };
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const activeIndex = STEPS.findIndex((s) => s.id === shot);
 
   return (
-    <div className="xp" style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}>
-      <WorldStage
-        bays={Math.min(result.chargePoints, MAX_BAYS)}
-        vehicleModel={result.vehicle.model}
-        roofM2={input.roofM2}
-        solarCoverage={input.solarCoverage}
-        batteryKwh={input.batteryKwh}
-        gridUpgrade={result.gridDeficitKw > 0}
-        chargerKw={result.chargerKw}
-        shot={shot}
-        accent={theme.accent}
-        energy={theme.energy}
-        sign="DITT DEPOT"
-        labels={labels}
-        inset={inset}
-      />
-      <div className="veil" aria-hidden />
-
-      <header className="topbar">
-        <div className="brand">
+    <div className="page" style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}>
+      <header className="hook wrap">
+        <p className="hook-brand">
           <span className="brand-mark" aria-hidden>
-            <svg viewBox="0 0 24 24" width="18" height="18">
+            <svg viewBox="0 0 24 24" width="16" height="16">
               <path d="M13.5 2 5 13.5h5.5L9.5 22 19 9.5h-5.5L15 2z" fill="currentColor" />
             </svg>
           </span>
-          <span>
-            <strong>Depotlading</strong>
-            <small>{theme.name}</small>
-          </span>
-        </div>
-        <dl className="kpis">
-          <div>
-            <dt>Ladeeffekt</dt>
-            <dd>{int(result.availableKw)} kW</dd>
-          </div>
-          <div>
-            <dt>Investering</dt>
-            <dd>{kr(result.totalCost)}</dd>
-          </div>
-          <div className="kpi-support">
-            <dt>Enova-støtte</dt>
-            <dd>{kr(result.support)}</dd>
-          </div>
-          <div>
-            <dt>Spart per år</dt>
-            <dd>{kr(result.annual.totalSaving)}</dd>
-          </div>
-        </dl>
-        <div className="topbar-end">
+          {theme.name} <span>Depotlading</span>
+        </p>
+        <h1>Elektriske lastebiler. Egen strøm. Enova betaler inntil 60 %.</h1>
+        <p className="hook-lede">
+          Se hva lading på depotet koster, hva dere sparer, og om dere kvalifiserer til Enovas støtte.
           {deadline && (
-            <span className="deadline">
-              Frist {formatDeadline(deadline.date).replace(/ \d{4}$/, "")}
-              <strong>{deadline.daysLeft} dager</strong>
-            </span>
+            <>
+              {" "}
+              Neste søknadsfrist er <strong>{formatDeadline(deadline.date)}</strong>, om {deadline.daysLeft} dager.
+            </>
           )}
-          <button type="button" className="btn btn-energy" onClick={() => go("vurdering")}>
-            Få vurdering
-          </button>
-        </div>
+        </p>
       </header>
 
-      <nav className="rail" aria-label="Steg">
-        {STEPS.map((s, i) => (
-          <button
-            key={s.id}
-            type="button"
-            className={`${i === activeIndex ? "is-current" : ""} ${i < activeIndex ? "is-done" : ""}`}
-            onClick={() => go(s.id)}
-          >
-            <span className="rail-dot">{i + 1}</span>
-            <span className="rail-label">{s.label}</span>
+      <section className="wrap figures" aria-label="Nøkkeltall">
+        <KeyFigures result={result} />
+        <div className="figures-foot">
+          <button type="button" className="link-btn" aria-expanded={details} onClick={() => setDetails((d) => !d)}>
+            {details ? "Skjul regnestykket" : "Se hele regnestykket"}
           </button>
-        ))}
-      </nav>
-
-      <LivePanel chargerKw={result.chargerKw} total={result.chargePoints} />
-
-      <main className="flow">
-        <section className="sec sec-hero" data-shot="hero" id="start">
-          <div className="hero-copy">
-            <p className="hero-kicker">Enova: Bedriftslading for tunge kjøretøy</p>
-            <h1>Se hva lading på depotet koster, og hvor mye Enova kan dekke</h1>
-            <p className="lede">
-              Enova dekker inntil 60 % av ladeanlegget, opptil 3 millioner kroner per prosjekt. Fyll inn flåten og
-              bygget, så bygger vi depotet mens du ser på, og regner ut støtten.
-            </p>
-            <div className="hero-actions">
-              <button type="button" className="btn btn-primary" onClick={() => go("fleet")}>
-                Start med flåten
-              </button>
-              {deadline && (
-                <span className="hero-deadline">
-                  Neste søknadsfrist: <strong>{formatDeadline(deadline.date)} kl. 12</strong>
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="scroll-cue" aria-hidden>
-            <span />
-          </div>
-        </section>
-
-        <Step id="fleet" n={1} title="Flåten som skal lade" lede="Hvor mange elektriske tunge kjøretøy, og hvor langt kjører de?" onNext={() => go("roof")} next="Videre: tak og solceller">
-          <VehicleStep input={input} result={result} set={set} />
-        </Step>
-
-        <Step id="roof" n={2} title="Taket og solcellene" lede="Takflaten avgjør hvor mye strøm dere kan lage selv. Se panelene komme på plass." onNext={() => go("energy")} next="Videre: strøm og batteri">
-          <RoofStep input={input} result={result} set={set} />
-        </Step>
-
-        <Step id="energy" n={3} title="Strømmen inn til laderne" lede="Holder nettilknytningen? Et batteri kan dekke toppene i stedet for en ny trafo." onNext={() => go("check")} next="Videre: støttesjekk">
-          <PowerStep input={input} result={result} set={set} />
-        </Step>
-
-        <Step id="check" n={4} title="Kvalifiserer dere?" lede="Seks spørsmål mot Enovas krav for runden 3. februar 2027." onNext={() => go("results")} next="Se tallene">
-          <CheckStep answers={answers} answer={answer} />
-        </Step>
-
-        <section className="sec sec-results" data-shot="results" id="results">
-          <div className="results-col">
-            <h2>Tallene for depotet</h2>
+          <button type="button" className="btn btn-energy" onClick={() => go("vurdering")}>
+            Få en gratis vurdering
+          </button>
+        </div>
+        {details && (
+          <div className="figures-details">
             <Investment result={result} input={input} set={set} />
             <Operation result={result} />
-            <Check check={check} />
-            <p className="disclaimer">
-              Tallene er et første anslag basert på typiske priser og forbruk. Endelig pris og søknadsgrunnlag avklares
-              etter befaring og svar fra nettselskapet. Kjøretøyene er ikke med i investeringen.
-            </p>
           </div>
-        </section>
+        )}
+      </section>
 
-        <section className="sec sec-lead" data-shot="lead" id="vurdering">
-          <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
-        </section>
-      </main>
-    </div>
-  );
-}
+      <section className="wrap tune" aria-labelledby="tune-title">
+        <h2 id="tune-title">Tilpass til depotet deres</h2>
+        <Choice
+          label="Type kjøretøy"
+          value={input.vehicleType}
+          onChange={(v) => set("vehicleType", v)}
+          columns={4}
+          options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label }))}
+        />
+        <div className="tune-grid">
+          <Slider
+            label="Lastebiler som skal lade"
+            value={input.vehicles}
+            min={1}
+            max={30}
+            step={1}
+            onChange={(v) => set("vehicles", v)}
+          />
+          <Slider
+            label="Kjørelengde per bil"
+            value={input.kmPerDay}
+            min={50}
+            max={600}
+            step={10}
+            unit="km per dag"
+            onChange={(v) => set("kmPerDay", v)}
+          />
+          <Slider
+            label="Takflate"
+            value={input.roofM2}
+            min={0}
+            max={12000}
+            step={100}
+            unit="m²"
+            format={int}
+            onChange={(v) => set("roofM2", v)}
+          />
+          <Slider
+            label="Batteri"
+            value={input.batteryKwh}
+            min={0}
+            max={3000}
+            step={50}
+            unit="kWh"
+            format={int}
+            onChange={(v) => set("batteryKwh", v)}
+          />
+        </div>
+        <details className="more">
+          <summary>Flere valg</summary>
+          <div className="tune-grid">
+            <Slider
+              label="Tid på depotet"
+              value={input.dwellHours}
+              min={2}
+              max={14}
+              step={1}
+              unit="timer per døgn"
+              onChange={(v) => set("dwellHours", v)}
+            />
+            <Slider
+              label="Driftsdøgn"
+              value={input.operatingDays}
+              min={200}
+              max={365}
+              step={5}
+              unit="per år"
+              onChange={(v) => set("operatingDays", v)}
+            />
+            <Slider
+              label="Andel av taket med solceller"
+              value={Math.round(input.solarCoverage * 100)}
+              min={0}
+              max={100}
+              step={5}
+              unit="%"
+              onChange={(v) => set("solarCoverage", v / 100)}
+            />
+            <Slider
+              label="Ledig effekt i nettilknytningen"
+              value={input.gridSpareKw ?? 0}
+              min={0}
+              max={2000}
+              step={25}
+              unit="kW"
+              format={int}
+              disabled={input.gridSpareKw === null}
+              onChange={(v) => set("gridSpareKw", v)}
+              hint={
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={input.gridSpareKw === null}
+                    onChange={(e) => set("gridSpareKw", e.target.checked ? null : 200)}
+                  />
+                  Vet ikke, vi sjekker med nettselskapet
+                </label>
+              }
+            />
+          </div>
+        </details>
+      </section>
 
-function Step({
-  id,
-  n,
-  title,
-  lede,
-  next,
-  onNext,
-  children,
-}: {
-  id: Shot;
-  n: number;
-  title: string;
-  lede: string;
-  next: string;
-  onNext: () => void;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLElement>(null);
-  return (
-    <section className="sec sec-step" data-shot={id} id={id} ref={ref}>
-      <div className="card step-card">
-        <p className="step-count">
-          Steg {n} av 4
+      <ScrollWorld input={input} result={result} theme={theme} />
+
+      <section className="carousel-sec" aria-labelledby="carousel-title">
+        <div className="wrap">
+          <h2 id="carousel-title">Anlegg vi har bygget</h2>
+          <p className="sec-lede">Fra grøft og nettilknytning til ferdig ladeplass. Smart Elektro gjør hele jobben.</p>
+        </div>
+        <Carousel />
+      </section>
+
+      <section className="wrap apply" id="vurdering" aria-labelledby="apply-title">
+        <h2 id="apply-title">Kvalifiserer dere?</h2>
+        <p className="sec-lede">Seks spørsmål mot Enovas krav. Send inn, så går vi gjennom tallene og søknaden med dere.</p>
+        <div className="apply-grid">
+          <div className="card step-body">
+            <CheckStep answers={answers} answer={answer} />
+          </div>
+          <Check check={check} />
+        </div>
+        <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
+        <p className="disclaimer">
+          Tallene er et første anslag basert på typiske priser og forbruk, og sammenligner med diesel. Kjøretøyene er
+          ikke med i investeringen. Endelig pris og søknadsgrunnlag avklares etter befaring og svar fra nettselskapet.
+          {result.chargePoints > 8 && ` Illustrasjonen viser 8 av ${result.chargePoints} ladeplasser.`}
         </p>
-        <h2>{title}</h2>
-        <p className="step-lede">{lede}</p>
-        <div className="step-body">{children}</div>
-        <button type="button" className="btn btn-primary step-next" onClick={onNext}>
-          {next}
-        </button>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }

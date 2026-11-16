@@ -82,6 +82,11 @@ export interface PlannerResult {
     co2Tonnes: number;
   };
   paybackYears: number | null;
+  /** Besparelse over analyseperioden minus egen investering */
+  netSavingPeriod: number;
+  periodYears: number;
+  /** Besparelse per år delt på egen investering (enkel avkastning) */
+  annualReturn: number | null;
   warnings: Warning[];
 }
 
@@ -188,6 +193,9 @@ export function calculate(input: PlannerInput): PlannerResult {
 
   const netInvestment = totalCost - support;
   const paybackYears = totalSaving > 0 && netInvestment > 0 ? netInvestment / totalSaving : null;
+  const periodYears = A.analysisYears;
+  const netSavingPeriod = totalSaving * periodYears - netInvestment;
+  const annualReturn = netInvestment > 0 ? totalSaving / netInvestment : null;
 
   return {
     vehicle,
@@ -223,6 +231,9 @@ export function calculate(input: PlannerInput): PlannerResult {
       co2Tonnes,
     },
     paybackYears,
+    netSavingPeriod,
+    periodYears,
+    annualReturn,
     warnings,
   };
 }

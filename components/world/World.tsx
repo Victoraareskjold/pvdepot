@@ -23,6 +23,8 @@ export interface WorldProps extends WorldParams {
   labels: PinLabels;
   /** Plass dekket av paneler i px: scenen sentreres i resten av skjermen */
   inset: { left: number; top: number; bottom: number };
+  /** false = scenen er utenfor skjermen og tegnes ikke */
+  active?: boolean;
 }
 
 export default function World(props: WorldProps) {
@@ -52,6 +54,7 @@ export default function World(props: WorldProps) {
   return (
     <>
     <Canvas
+      frameloop={props.active === false ? "never" : "always"}
       orthographic
       shadows={{ type: THREE.PCFSoftShadowMap }}
       dpr={dpr}
@@ -196,7 +199,9 @@ function CameraRig({
         }
     const availW = Math.max(200, size.width - inset.left - 24);
     const availH = Math.max(200, size.height - inset.top - inset.bottom - 24);
-    const z = Math.min(availW / (maxR - minR), availH / (maxU - minU));
+    // Stående mobil: tillat litt beskjæring i sidene, ellers blir alt for smått.
+    const crop = size.width < 600 ? 1.45 : 1;
+    const z = Math.min((availW / (maxR - minR)) * crop, availH / (maxU - minU));
     // Flytt midten så scenen havner i den ledige delen av skjermen.
     const t = box
       .getCenter(new THREE.Vector3())

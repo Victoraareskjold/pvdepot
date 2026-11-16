@@ -96,6 +96,14 @@ describe("drift", () => {
   });
 });
 
+describe("nøkkeltall", () => {
+  test("spart over perioden og avkastning henger sammen med tilbakebetaling", () => {
+    const r = calculate(DEFAULT_INPUT);
+    expect(r.netSavingPeriod).toBeCloseTo(r.annual.totalSaving * r.periodYears - r.netInvestment, 0);
+    expect(r.annualReturn!).toBeCloseTo(1 / r.paybackYears!, 6);
+  });
+});
+
 describe("støttesjekk", () => {
   test("standardsvar: må avklare nett, men ingen stopp", () => {
     const q = qualify(DEFAULT_ANSWERS);

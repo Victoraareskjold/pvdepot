@@ -22,8 +22,8 @@ bun run typecheck
   `/lading` (`src/app/[site]/lading/`), bare for `smartelektrosol`.
 - **Parametre i URL-en:** `site`, `gclid`, `fbclid`, `utm_campaign`.
 - **Fast høyde:** iframen fyller skjermen under menyen, og appen scroller
-  selv. 3D-verdenen ligger fast bak innholdet, og kameraet glir til det
-  steget som er midt på skjermen.
+  selv. 3D-depotet er en egen scroll-seksjon der scenen står fast mens man
+  scroller, og kameraet går gjennom stoppene.
 - **Melding til nettsiden** (`lib/embed.ts`): `lead` etter innsending.
   Nettsiden går til `/takk`, der Consentify/GTM teller konverteringen.
   Appen laster ingen pixler selv.
@@ -41,8 +41,11 @@ lib/calc/model.ts         Ladebehov, ladere, nett, batteri, sol, Enova, drift.
 lib/calc/qualify.ts       Støttesjekken (krav og styrker).
 lib/calc/deadlines.ts     Enova-frister 2027.
 lib/sites.ts              Farger og navn per nettsted.
-components/Experience.tsx Siden: toppfelt, stegskinne, steg, resultater.
-components/sections.tsx   Innholdet i stegene og resultatkortene.
+components/Experience.tsx Siden: hook, nøkkeltall, slidere, 3D, karusell, skjema.
+components/KeyFigures.tsx De seks nøkkeltallene (ruller til ny verdi).
+components/ScrollWorld.tsx 3D-depotet som scroll-seksjon med tekst per stopp.
+components/Carousel.tsx   Bildekarusell. Bilder: sett `src` i SLIDES, filer i public/carousel/.
+components/sections.tsx   Støttesjekk og resultatkort (regnestykket).
 components/LivePanel.tsx  Ladeplassene i sanntid, lest fra simuleringen.
 components/LeadForm.tsx   Skjemaet og oppsummeringen som sendes med.
 components/world/         3D-verdenen (React Three Fiber), lastes etter tallene:

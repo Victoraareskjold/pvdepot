@@ -24,7 +24,8 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 
 - Alle tall og priser ligger i `lib/calc/assumptions.ts`. Ikke hardkod tall i komponenter.
 - Regn i `lib/calc/model.ts` og test i `model.test.ts`.
-- Appen vises i en iframe med fast høyde (skjermen under menyen) og scroller selv. 3D-verdenen ligger `position: fixed` bak innholdet; kameraet følger seksjonen midt på skjermen (`data-shot`).
+- Sideoppsett (skisse 16.11.2026): hook og seks nøkkeltall, slidere, 3D-depotet som scroll-seksjon (`ScrollWorld.tsx`: seksjonen er flere skjermer høy, scenen står sticky, fremdriften styrer kamera og tekst; scenen pauser utenfor skjermen), bildekarusell (`Carousel.tsx`, plassholdere til Smart Elektro sender bilder), støttesjekk og skjema.
+- Appen vises i en iframe med fast høyde (skjermen under menyen) og scroller selv, så `position: sticky` virker.
 - 3D: `components/world/` (layout, bygg, flåte med ladesyklus, sol med kran, energi, merkelapper). Simuleringen deler status med panelene via `world/live.ts`.
 - Trafikken på depotet ligger i `components/world/sim.ts` (uten 3D) og testes i `sim.test.ts`: ingen overlapp mellom biler eller med laderne, ingen vranglås. Endrer du kjøreruter eller fart i `layout.ts`/`sim.ts`, kjør `bun test`.
 - Ytelse: tegn mange like ting med `Instanced` (parts.tsx), ikke lag objekter i `useFrame`, og hold tunge komponenter i `memo`. `?debug=1` gir `window.__gl.info`.

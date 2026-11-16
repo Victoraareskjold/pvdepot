@@ -19,12 +19,11 @@ function hasWebGL(): boolean {
 export default function WorldStage(props: WorldProps) {
   const [mode, setMode] = useState<"pending" | "3d" | "flat">("pending");
 
+  // Start 3D først når seksjonen nærmer seg skjermen.
   useEffect(() => {
-    const start = () => setMode(hasWebGL() ? "3d" : "flat");
-    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
-    if (w.requestIdleCallback) w.requestIdleCallback(start, { timeout: 600 });
-    else setTimeout(start, 150);
-  }, []);
+    if (mode !== "pending" || props.active === false) return;
+    setMode(hasWebGL() ? "3d" : "flat");
+  }, [mode, props.active]);
 
   return (
     <div className={`world world-${mode}`} aria-hidden>
