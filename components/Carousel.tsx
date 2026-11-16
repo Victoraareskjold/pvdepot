@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -7,25 +8,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * siden av vipper bakover. Scroll-snap gir naturlig sveip på mobil og
  * styreflate; pilene, tastaturet og automatisk visning bruker samme scroll.
  *
- * Bytt plassholderne med ekte bilder ved å sette `src` (legg filene i
- * public/carousel/). Bildene fra Smart Elektro kommer her.
+ * Bildene ligger i public/carousel/1.png … 12.png (fra Smart Elektro).
+ * next/image skalerer dem ned og leverer dem i et lettere format.
  */
 export interface Slide {
   title: string;
   place?: string;
-  src?: string;
-  /** Farger for plassholderen */
-  tint: [string, string];
+  src: string;
 }
 
-export const SLIDES: Slide[] = [
-  { title: "Montering av DC-lader", place: "Lillestrøm", tint: ["#0067a6", "#3aa0e0"] },
-  { title: "Tavle og styringsskap", place: "Oslo", tint: ["#13233a", "#41597e"] },
-  { title: "Solceller på lagertak", place: "Skedsmo", tint: ["#ff9d00", "#ffd05a"] },
-  { title: "Batterirom med laststyring", place: "Gardermoen", tint: ["#11875b", "#4fd398"] },
-  { title: "Ferdig ladeplass", place: "Alnabru", tint: ["#2f62d8", "#8fb4ec"] },
-  { title: "Service og oppfølging", place: "Romerike", tint: ["#a14a09", "#ff8a3d"] },
+const CAPTIONS = [
+  "DC-lader med kabelhenger",
+  "Lading under solcelletak",
+  "Montering av solceller",
+  "Rekke med ladepunkter",
+  "Kranløft av ladeskap",
+  "Tilkobling av tavler",
+  "Batteriskap ved laderen",
+  "Kontroll av batterimoduler",
+  "Solceller på lagertak",
+  "Levering med kranbil",
+  "Ladeplassen sett ovenfra",
+  "Ferdig ladeplass",
 ];
+
+export const SLIDES: Slide[] = CAPTIONS.map((title, i) => ({ title, src: `/carousel/${i + 1}.png` }));
 
 export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
   const track = useRef<HTMLDivElement>(null);
@@ -157,13 +164,15 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
             aria-label={`${i + 1} av ${slides.length}: ${s.title}`}
             onClick={() => i !== active && goTo(i)}
           >
-            <div className="slide-media" style={{ ["--t1" as string]: s.tint[0], ["--t2" as string]: s.tint[1] }}>
-              {s.src ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={s.src} alt={s.title} loading="lazy" draggable={false} />
-              ) : (
-                <span className="slide-placeholder">Bilde kommer</span>
-              )}
+            <div className="slide-media">
+              <Image
+                src={s.src}
+                alt={s.title}
+                fill
+                sizes="(max-width: 700px) 85vw, 560px"
+                priority={i === 0}
+                draggable={false}
+              />
             </div>
             <figcaption>
               <strong>{s.title}</strong>

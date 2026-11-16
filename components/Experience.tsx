@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
 import { qualify, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
@@ -41,12 +42,15 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
     <div className="page" style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}>
       <header className="hook wrap">
         <p className="hook-brand">
-          <span className="brand-mark" aria-hidden>
-            <svg viewBox="0 0 24 24" width="16" height="16">
-              <path d="M13.5 2 5 13.5h5.5L9.5 22 19 9.5h-5.5L15 2z" fill="currentColor" />
-            </svg>
-          </span>
-          {theme.name} <span>Depotlading</span>
+          <Image
+            className="brand-logo"
+            src={theme.logo.src}
+            alt={`${theme.name} Sol`}
+            width={theme.logo.width}
+            height={theme.logo.height}
+            priority
+          />{" "}
+          <span>Depotlading</span>
         </p>
         <h1>Elektriske lastebiler. Egen strøm. Enova betaler inntil 60 %.</h1>
         <p className="hook-lede">
@@ -67,7 +71,7 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
             {details ? "Skjul regnestykket" : "Se hele regnestykket"}
           </button>
           <button type="button" className="btn btn-energy" onClick={() => go("vurdering")}>
-            Få en gratis vurdering
+            Få en vurdering
           </button>
         </div>
         {details && (

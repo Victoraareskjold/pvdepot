@@ -11,7 +11,7 @@ Laget for Smart Elektro Sol (eksklusivt blant partnerne ut 2027), mot Enovas
 
 ```bash
 bun install
-bun dev          # http://localhost:3002/?site=smartelektrosol
+bun dev          # http://localhost:3002
 bun test         # kalkylemodellen
 bun run typecheck
 ```
@@ -40,7 +40,7 @@ lib/calc/assumptions.ts   Alle forutsetninger og priser. Endre her.
 lib/calc/model.ts         Ladebehov, ladere, nett, batteri, sol, Enova, drift.
 lib/calc/qualify.ts       Støttesjekken (krav og styrker).
 lib/calc/deadlines.ts     Enova-frister 2027.
-lib/sites.ts              Farger og navn per nettsted.
+lib/sites.ts              Farger, navn og logo (bare Smart Elektro Sol).
 components/Experience.tsx Siden: hook, nøkkeltall, slidere, 3D, karusell, skjema.
 components/KeyFigures.tsx De seks nøkkeltallene (ruller til ny verdi).
 components/ScrollWorld.tsx 3D-depotet som scroll-seksjon med tekst per stopp.
