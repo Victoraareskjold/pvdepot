@@ -68,7 +68,10 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           />{" "}
           <span>Depotlading</span>
         </p>
-        <h1>Elektriske lastebiler. Enova betaler inntil 60 %.</h1>
+        <h1>
+          <span>Elektriske lastebiler.</span>
+          <span>Enova betaler inntil 60 %.</span>
+        </h1>
         <p className="hook-lede">
           Se hva lading på depotet koster, hva dere sparer, og om dere
           kvalifiserer til Enovas støtte.
@@ -88,18 +91,19 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
         <div className="figures-foot">
           <button
             type="button"
+            className="btn btn-energy"
+            onClick={() => go("vurdering")}
+          >
+            Få en vurdering
+            <span aria-hidden="true">→</span>
+          </button>
+          <button
+            type="button"
             className="link-btn"
             aria-expanded={details}
             onClick={() => setDetails((d) => !d)}
           >
             {details ? "Skjul regnestykket" : "Se hele regnestykket"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-energy"
-            onClick={() => go("vurdering")}
-          >
-            Få en vurdering
           </button>
         </div>
         {details && (
