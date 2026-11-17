@@ -3,7 +3,11 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
-import { qualify, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
+import {
+  qualify,
+  DEFAULT_ANSWERS,
+  type QualifyAnswers,
+} from "@/lib/calc/qualify";
 import { nextDeadline, formatDeadline } from "@/lib/calc/deadlines";
 import { VEHICLE_TYPES } from "@/lib/calc/assumptions";
 import { int } from "@/lib/format";
@@ -23,7 +27,8 @@ import { Check, CheckStep, Investment, Operation } from "./sections";
 export default function Experience({ theme }: { theme: SiteTheme }) {
   const [input, setInput] = useState<PlannerInput>(DEFAULT_INPUT);
   const [answers, setAnswers] = useState<QualifyAnswers>(DEFAULT_ANSWERS);
-  const [deadline, setDeadline] = useState<ReturnType<typeof nextDeadline>>(null);
+  const [deadline, setDeadline] =
+    useState<ReturnType<typeof nextDeadline>>(null);
   const [details, setDetails] = useState(false);
 
   const result = useMemo(() => calculate(input), [input]);
@@ -31,15 +36,26 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
 
   const set = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }));
-  const answer = <K extends keyof QualifyAnswers>(key: K, value: QualifyAnswers[K]) =>
-    setAnswers((prev) => ({ ...prev, [key]: value }));
+  const answer = <K extends keyof QualifyAnswers>(
+    key: K,
+    value: QualifyAnswers[K],
+  ) => setAnswers((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => setDeadline(nextDeadline()), []);
 
-  const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const go = (id: string) =>
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <div className="page" style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}>
+    <div
+      className="page"
+      style={{
+        ["--accent" as string]: theme.accent,
+        ["--energy" as string]: theme.energy,
+      }}
+    >
       <header className="hook wrap">
         <p className="hook-brand">
           <Image
@@ -52,13 +68,16 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           />{" "}
           <span>Depotlading</span>
         </p>
-        <h1>Elektriske lastebiler. Egen strøm. Enova betaler inntil 60 %.</h1>
+        <h1>Elektriske lastebiler. Enova betaler inntil 60 %.</h1>
         <p className="hook-lede">
-          Se hva lading på depotet koster, hva dere sparer, og om dere kvalifiserer til Enovas støtte.
+          Se hva lading på depotet koster, hva dere sparer, og om dere
+          kvalifiserer til Enovas støtte.
           {deadline && (
             <>
               {" "}
-              Neste søknadsfrist er <strong>{formatDeadline(deadline.date)}</strong>, om {deadline.daysLeft} dager.
+              Neste søknadsfrist er{" "}
+              <strong>{formatDeadline(deadline.date)}</strong>, om{" "}
+              {deadline.daysLeft} dager.
             </>
           )}
         </p>
@@ -67,10 +86,19 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
       <section className="wrap figures" aria-label="Nøkkeltall">
         <KeyFigures result={result} />
         <div className="figures-foot">
-          <button type="button" className="link-btn" aria-expanded={details} onClick={() => setDetails((d) => !d)}>
+          <button
+            type="button"
+            className="link-btn"
+            aria-expanded={details}
+            onClick={() => setDetails((d) => !d)}
+          >
             {details ? "Skjul regnestykket" : "Se hele regnestykket"}
           </button>
-          <button type="button" className="btn btn-energy" onClick={() => go("vurdering")}>
+          <button
+            type="button"
+            className="btn btn-energy"
+            onClick={() => go("vurdering")}
+          >
             Få en vurdering
           </button>
         </div>
@@ -175,7 +203,9 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
                   <input
                     type="checkbox"
                     checked={input.gridSpareKw === null}
-                    onChange={(e) => set("gridSpareKw", e.target.checked ? null : 200)}
+                    onChange={(e) =>
+                      set("gridSpareKw", e.target.checked ? null : 200)
+                    }
                   />
                   Vet ikke, vi sjekker med nettselskapet
                 </label>
@@ -190,25 +220,44 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
       <section className="carousel-sec" aria-labelledby="carousel-title">
         <div className="wrap">
           <h2 id="carousel-title">Anlegg vi har bygget</h2>
-          <p className="sec-lede">Fra grøft og nettilknytning til ferdig ladeplass. Smart Elektro gjør hele jobben.</p>
+          <p className="sec-lede">
+            Fra grøft og nettilknytning til ferdig ladeplass. Smart Elektro gjør
+            hele jobben.
+          </p>
         </div>
         <Carousel />
       </section>
 
-      <section className="wrap apply" id="vurdering" aria-labelledby="apply-title">
+      <section
+        className="wrap apply"
+        id="vurdering"
+        aria-labelledby="apply-title"
+      >
         <h2 id="apply-title">Kvalifiserer dere?</h2>
-        <p className="sec-lede">Seks spørsmål mot Enovas krav. Send inn, så går vi gjennom tallene og søknaden med dere.</p>
+        <p className="sec-lede">
+          Seks spørsmål mot Enovas krav. Send inn, så går vi gjennom tallene og
+          søknaden med dere.
+        </p>
         <div className="apply-grid">
           <div className="card step-body">
             <CheckStep answers={answers} answer={answer} />
           </div>
           <Check check={check} />
         </div>
-        <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
+        <LeadForm
+          theme={theme}
+          result={result}
+          check={check}
+          input={input}
+          answers={answers}
+        />
         <p className="disclaimer">
-          Tallene er et første anslag basert på typiske priser og forbruk, og sammenligner med diesel. Kjøretøyene er
-          ikke med i investeringen. Endelig pris og søknadsgrunnlag avklares etter befaring og svar fra nettselskapet.
-          {result.chargePoints > 8 && ` Illustrasjonen viser 8 av ${result.chargePoints} ladeplasser.`}
+          Tallene er et første anslag basert på typiske priser og forbruk, og
+          sammenligner med diesel. Kjøretøyene er ikke med i investeringen.
+          Endelig pris og søknadsgrunnlag avklares etter befaring og svar fra
+          nettselskapet.
+          {result.chargePoints > 8 &&
+            ` Illustrasjonen viser 8 av ${result.chargePoints} ladeplasser.`}
         </p>
       </section>
     </div>
