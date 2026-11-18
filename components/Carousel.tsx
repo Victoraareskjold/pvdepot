@@ -18,21 +18,24 @@ export interface Slide {
 }
 
 const CAPTIONS = [
-  "DC-lader med kabelhenger",
-  "Lading under solcelletak",
+  "Depot ladepunkt DC",
+  "Depot ladepunkt med ladehatt DC",
   "Montering av solceller",
   "Rekke med ladepunkter",
-  "Kranløft av ladeskap",
-  "Tilkobling av tavler",
-  "Batteriskap ved laderen",
-  "Kontroll av batterimoduler",
+  "Montering av hovedfordeling til depotladeanlegg 2MW",
+  "Montering av hovedfordeling til depotladeanlegg 2MW",
+  "Dette er en likeretter (Kempower)",
+  "Dette er service på en likeretter. (Kempower)",
   "Solceller på lagertak",
-  "Levering med kranbil",
+  "Heising av teknikkhus for hovedfordeling depotlading 4MW",
   "Ladeplassen sett ovenfra",
   "Ferdig ladeplass",
 ];
 
-export const SLIDES: Slide[] = CAPTIONS.map((title, i) => ({ title, src: `/carousel/${i + 1}.png` }));
+export const SLIDES: Slide[] = CAPTIONS.map((title, i) => ({
+  title,
+  src: `/carousel/${i + 1}.png`,
+}));
 
 export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
   const track = useRef<HTMLDivElement>(null);
@@ -86,14 +89,18 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
     const n = el.children.length;
     const idx = ((i % n) + n) % n;
     const c = el.children[idx] as HTMLElement;
-    el.scrollTo({ left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
+    el.scrollTo({
+      left: c.offsetLeft - (el.clientWidth - c.offsetWidth) / 2,
+      behavior: "smooth",
+    });
   }, []);
 
   // Går videre av seg selv, men stopper når noen holder musen over eller bruker den.
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const id = setInterval(() => {
-      if (!paused.current && document.visibilityState === "visible") goTo(active + 1);
+      if (!paused.current && document.visibilityState === "visible")
+        goTo(active + 1);
     }, 4500);
     return () => clearInterval(id);
   }, [active, goTo]);
@@ -182,9 +189,21 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
         ))}
       </div>
       <div className="carousel-nav">
-        <button type="button" className="carousel-arrow" aria-label="Forrige bilde" onClick={() => goTo(active - 1)}>
+        <button
+          type="button"
+          className="carousel-arrow"
+          aria-label="Forrige bilde"
+          onClick={() => goTo(active - 1)}
+        >
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
-            <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M15 5l-7 7 7 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
         <div className="carousel-dots">
@@ -199,9 +218,21 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
             />
           ))}
         </div>
-        <button type="button" className="carousel-arrow" aria-label="Neste bilde" onClick={() => goTo(active + 1)}>
+        <button
+          type="button"
+          className="carousel-arrow"
+          aria-label="Neste bilde"
+          onClick={() => goTo(active + 1)}
+        >
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
-            <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M9 5l7 7-7 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       </div>
