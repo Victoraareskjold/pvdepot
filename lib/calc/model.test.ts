@@ -20,11 +20,15 @@ describe("ladere", () => {
     expect(r.chargerKw).toBe(60);
     expect(r.chargePoints).toBe(6);
     expect(r.nameplateKw).toBe(360);
-    expect(r.availableKw).toBe(360);
+    // Enova regner med effekten med laststyring: 6 × 23,9 kW, ikke 6 × 60 kW.
+    expect(r.availableKw).toBeCloseTo(6 * 23.913, 1);
     // 6 * (120 000 + 60 * 2 800) = 1 728 000
     expect(r.costs[0].cost).toBe(1_728_000);
-    expect(r.support).toBeCloseTo(1_728_000 * 0.6, 0);
-    expect(r.krPerKw).toBeCloseTo((1_728_000 * 0.6) / 360, 0);
+    // Automatisk støttegrad holder søknaden under grensen på 4 200 kr per kW.
+    expect(r.supportAuto).toBe(true);
+    expect(r.krPerKw).toBeLessThanOrEqual(4_200);
+    expect(r.competitive).toBe(true);
+    expect(r.krPerKw).toBeCloseTo(r.support / r.availableKw, 0);
     expect(r.warnings.some((w) => w.id === "grid-unknown")).toBe(true);
   });
 
@@ -43,8 +47,8 @@ describe("Enova", () => {
   });
 
   test("lavere støttegrad gir lavere kr per kW", () => {
-    const full = calculate(DEFAULT_INPUT);
-    const lower = calculate({ ...DEFAULT_INPUT, supportRate: 0.4 });
+    const full = calculate({ ...DEFAULT_INPUT, supportRate: 0.6 });
+    const lower = calculate({ ...DEFAULT_INPUT, supportRate: 0.2 });
     expect(lower.krPerKw).toBeLessThan(full.krPerKw);
   });
 
@@ -53,17 +57,33 @@ describe("Enova", () => {
     expect(r.support).toBeCloseTo(r.eligibleCost * 0.6, 0);
   });
 
-  test("sol er ikke med i grunnlaget", () => {
-    const r = calculate({ ...DEFAULT_INPUT, roofM2: 5000 });
+  test("sol og nettforsterkning er med i grunnlaget", () => {
+    const r = calculate({ ...DEFAULT_INPUT, roofM2: 5000, gridSpareKw: 50, batteryKwh: 0 });
     const solar = r.costs.find((c) => c.id === "solar")!;
+    const grid = r.costs.find((c) => c.id === "grid")!;
     expect(solar.cost).toBeGreaterThan(0);
-    expect(solar.eligible).toBe(0);
+    expect(solar.eligible).toBe(solar.cost);
+    expect(grid.cost).toBeGreaterThan(0);
+    expect(grid.eligible).toBe(grid.cost);
+  });
+});
+
+describe("Auduns eksempel (19.11.2026)", () => {
+  test("14 biler, bare ladere: 35 % gir 1,4 mill. kr og ca. 4 200 kr/kW", () => {
+    const r = calculate({ ...DEFAULT_INPUT, vehicles: 14, roofM2: 0, batteryKwh: 0, supportRate: 0.35 });
+    expect(Math.round(r.availableKw)).toBe(335);
+    expect(r.support).toBeCloseTo(1_411_200, -3);
+  });
+  test("automatisk støttegrad holder seg under grensen også med sol", () => {
+    const r = calculate({ ...DEFAULT_INPUT, vehicles: 14 });
+    expect(r.krPerKw).toBeLessThan(4_200);
+    expect(r.supportRate).toBeLessThanOrEqual(0.6);
   });
 });
 
 describe("nett og batteri", () => {
   test("for lite nett gir forsterkning, batteri reduserer den", () => {
-    const base = { ...DEFAULT_INPUT, vehicles: 10, gridSpareKw: 100 };
+    const base = { ...DEFAULT_INPUT, vehicles: 10, gridSpareKw: 100, batteryKwh: 0 };
     const noBattery = calculate(base);
     expect(noBattery.gridDeficitKw).toBeGreaterThan(0);
     expect(noBattery.costs.find((c) => c.id === "grid")!.cost).toBeGreaterThan(0);

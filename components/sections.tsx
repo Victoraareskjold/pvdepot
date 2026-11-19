@@ -243,12 +243,18 @@ export function Investment({ result, input, set }: { result: PlannerResult; inpu
             <tr key={c.id}>
               <th scope="row">
                 {c.label}
-                {c.eligible === 0 && <span className="tag">ikke støtte</span>}
+                {c.id === "battery" && c.eligible === 0 && <span className="tag">ikke støtte</span>}
                 {c.eligible > 0 && c.eligible < c.cost && <span className="tag">delvis støtte</span>}
               </th>
               <td>{kr(c.cost)}</td>
             </tr>
           ))}
+          {input.gridSpareKw === null && (
+            <tr className="extra">
+              <th scope="row">Nettilknytning</th>
+              <td>kommer i tillegg</td>
+            </tr>
+          )}
           <tr className="sum">
             <th scope="row">Samlet investering</th>
             <td>{kr(result.totalCost)}</td>
@@ -267,20 +273,33 @@ export function Investment({ result, input, set }: { result: PlannerResult; inpu
       <div className="rank">
         <Slider
           label="Støttegrad dere søker om"
-          value={Math.round(input.supportRate * 100)}
-          min={10}
+          value={Math.round(result.supportRate * 100)}
+          min={5}
           max={60}
-          step={5}
+          step={1}
           unit="%"
           onChange={(v) => set("supportRate", v / 100)}
+          hint={
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={input.supportRate === null}
+                onChange={(e) => set("supportRate", e.target.checked ? null : Math.round(result.supportRate * 100) / 100)}
+              />
+              Velg automatisk, så søknaden holder seg under grensen
+            </label>
+          }
         />
-        <p className="rank-figure">
+        <p className={`rank-figure${result.competitive === false ? " is-warning" : ""}`}>
           <span className="big">{int(result.krPerKw)}</span> kr støtte per kW ladeeffekt
         </p>
         <p className="field-hint">
-          Enova rangerer søknadene på støtte per kW. Jo lavere tall, jo bedre plass i køen. Bare de best rangerte får
-          støtte.
-          {cutoff !== null && ` Grensen i forrige runde var ${int(cutoff)} kr per kW.`}
+          Enova rangerer søknadene på støtte per kW samtidig ladeeffekt med laststyring (her {int(result.availableKw)} kW).
+          Jo lavere tall, jo bedre plass i køen.
+          {cutoff !== null &&
+            (result.competitive
+              ? ` I de siste rundene har bare søknader under ${int(cutoff)} kr per kW fått støtte, og dette er under.`
+              : ` I de siste rundene har bare søknader under ${int(cutoff)} kr per kW fått støtte. Dette er over, så søknaden vil trolig få avslag.`)}
           {result.supportCapped && " Støtten er begrenset av taket på 3 mill. kr."}
         </p>
       </div>

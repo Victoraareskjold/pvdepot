@@ -2,30 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PlannerResult } from "@/lib/calc/model";
-import { dec, int, kr } from "@/lib/format";
+import { dec, kr } from "@/lib/format";
 
 /**
- * Seks nøkkeltall, som i skissen. Tallene ruller mykt til ny verdi når
- * en slider endres, så man ser at de henger sammen med valgene.
+ * Tre nøkkeltall (Smart Elektro, 19.11.2026): Enova-støtte, nedbetalingstid
+ * og spart over 10 år. Resten ligger i regnestykket. Tallene ruller mykt
+ * til ny verdi når en slider endres.
  */
 export default function KeyFigures({ result: r }: { result: PlannerResult }) {
   const figures: { label: string; value: number | null; format: (v: number) => string; tone?: "dark" | "charge" }[] = [
     { label: "Enova-støtte", value: r.support, format: kr, tone: "charge" },
-    { label: "Egen investering", value: r.netInvestment, format: kr },
-    { label: `Spart over ${r.periodYears} år`, value: r.netSavingPeriod, format: (v) => kr(v), tone: "dark" },
-    { label: "Mindre CO₂ per år", value: r.annual.co2Tonnes, format: (v) => `${int(v)} tonn` },
     { label: "Nedbetalt på", value: r.paybackYears, format: (v) => `${dec(v)} år` },
-    { label: "Årlig avkastning", value: r.annualReturn === null ? null : r.annualReturn * 100, format: (v) => `${int(v)} %` },
+    { label: `Spart over ${r.periodYears} år`, value: r.netSavingPeriod, format: (v) => kr(v), tone: "dark" },
   ];
   return (
-    <dl className="kpi-grid">
-      {figures.map((f) => (
-        <div key={f.label} className={`kpi${f.tone ? ` kpi-${f.tone}` : ""}`}>
-          <dt>{f.label}</dt>
-          <dd>{f.value === null ? "–" : <Tween value={f.value} format={f.format} />}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="figures-box">
+      <dl className="kpi-grid">
+        {figures.map((f) => (
+          <div key={f.label} className={`kpi${f.tone ? ` kpi-${f.tone}` : ""}`}>
+            <dt>{f.label}</dt>
+            <dd>{f.value === null ? "–" : <Tween value={f.value} format={f.format} />}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="kpi-note">
+        Besparelsen er spart diesel. Merpris for elektriske biler er ikke med.
+        {r.competitive === false && " Støtten er over grensen Enova har godtatt i de siste rundene."}
+      </p>
+    </div>
   );
 }
 

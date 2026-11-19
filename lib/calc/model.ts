@@ -19,7 +19,11 @@ export interface PlannerInput {
   /** Stasjonært batteri */
   batteryKwh: number;
   /** Støttegraden bedriften søker om (0–0,6). Lavere gir bedre rangering. */
-  supportRate: number;
+  /**
+   * Støttegraden bedriften søker om (0–0,6). null = automatisk: den høyeste
+   * som holder søknaden under grensen for kr per kW fra forrige runde.
+   */
+  supportRate: number | null;
 }
 
 export const DEFAULT_INPUT: PlannerInput = {
@@ -31,8 +35,8 @@ export const DEFAULT_INPUT: PlannerInput = {
   roofM2: 3_000,
   solarCoverage: 0.6,
   gridSpareKw: null,
-  batteryKwh: 0,
-  supportRate: 0.6,
+  batteryKwh: 600,
+  supportRate: null,
 };
 
 export interface CostLine {
@@ -52,7 +56,10 @@ export interface PlannerResult {
   nameplateKw: number;
   /** Effekten som trengs når lading fordeles jevnt over ståtiden */
   managedPeakKw: number;
-  /** Samlet tilgjengelig ladeeffekt, grunnlaget for Enovas rangering */
+  /**
+   * Samlet ladeeffekt Enova regner med: effekten med laststyring (det
+   * anlegget faktisk leverer samtidig), ikke summen av alle laderne.
+   */
   availableKw: number;
   batteryKw: number;
   gridDeficitKw: number;
@@ -62,6 +69,11 @@ export interface PlannerResult {
   totalCost: number;
   eligibleCost: number;
   maxSupport: number;
+  /** Støttegraden som faktisk er brukt (automatisk eller valgt) */
+  supportRate: number;
+  supportAuto: boolean;
+  /** Under grensen for kr per kW fra forrige runde (null = ukjent grense) */
+  competitive: boolean | null;
   support: number;
   supportCapped: boolean;
   krPerKw: number;
@@ -128,14 +140,13 @@ export function calculate(input: PlannerInput): PlannerResult {
   const gridSpare = input.gridSpareKw ?? 0;
 
   let gridDeficitKw = 0;
-  let availableKw = nameplateKw;
+  // Enova rangerer på kr per kW samtidig ladeeffekt, altså med laststyring.
+  const availableKw = managedPeakKw;
   let batteryNeededKw = 0;
 
   if (gridKnown) {
     batteryNeededKw = Math.max(0, managedPeakKw - gridSpare);
     gridDeficitKw = Math.max(0, managedPeakKw - batteryKw - gridSpare);
-    const gridAfter = gridSpare + gridDeficitKw;
-    availableKw = Math.min(nameplateKw, gridAfter + batteryKw);
     if (gridDeficitKw > 0) warnings.push({ id: "grid-upgrade", deficitKw: Math.ceil(gridDeficitKw) });
   } else if (vehicles > 0) {
     warnings.push({ id: "grid-unknown" });
@@ -167,7 +178,11 @@ export function calculate(input: PlannerInput): PlannerResult {
 
   const totalCost = sum(costs.map((c) => c.cost));
   const eligibleCost = sum(costs.map((c) => c.eligible));
-  const rate = clamp(input.supportRate, 0, A.enovaMaxRate);
+  // Automatisk: søk så mye som mulig, men under grensen (med 5 % margin).
+  const target = A.enovaHistoricalCutoffKrPerKw !== null ? A.enovaHistoricalCutoffKrPerKw * 0.95 : null;
+  const autoRate =
+    target !== null && eligibleCost > 0 ? clamp((target * availableKw) / eligibleCost, 0, A.enovaMaxRate) : A.enovaMaxRate;
+  const rate = clamp(input.supportRate ?? autoRate, 0, A.enovaMaxRate);
   const uncappedMax = eligibleCost * A.enovaMaxRate;
   const maxSupport = Math.min(uncappedMax, A.enovaMaxSupport);
   const support = Math.min(eligibleCost * rate, A.enovaMaxSupport);
@@ -213,6 +228,10 @@ export function calculate(input: PlannerInput): PlannerResult {
     totalCost,
     eligibleCost,
     maxSupport,
+    supportRate: rate,
+    supportAuto: input.supportRate === null,
+    competitive:
+      A.enovaHistoricalCutoffKrPerKw === null ? null : krPerKw <= A.enovaHistoricalCutoffKrPerKw,
     support,
     supportCapped,
     krPerKw,

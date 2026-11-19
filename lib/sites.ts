@@ -16,5 +16,5 @@ export const THEME: SiteTheme = {
   accent: "#0067a6",
   energy: "#ff9d00",
   phone: "+47 48 26 22 18",
-  logo: { src: "/brand/smartelektrosol.png", width: 717, height: 341 },
+  logo: { src: "/brand/smartelektrolading.png", width: 821, height: 341 },
 };

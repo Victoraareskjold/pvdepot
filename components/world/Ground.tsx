@@ -128,7 +128,7 @@ function Car({ position, color }: { position: [number, number, number]; color: s
 /* ------------------- Lasteområdet med gaffeltrucker ------------------- */
 
 function DockYardInner({ layout }: { layout: Layout }) {
-  const { forkliftYard: y, docks, building } = layout;
+  const { forkliftYard: y, sideDoors, building } = layout;
   const stacks = useMemo(() => {
     const rnd = mulberry(3);
     const out: { x: number; z: number; h: number }[] = [];
@@ -156,10 +156,10 @@ function DockYardInner({ layout }: { layout: Layout }) {
         </mesh>
       ))}
       <Instanced items={stackBoxes} geometry={BOX} />
-      {docks.slice(0, 3).map((d, i) => (
+      {sideDoors.map((d, i) => (
         <Forklift
           key={i}
-          from={[building.w / 2 + 3.6, d.z]}
+          from={[building.w / 2 + 2.6, d.z]}
           to={[y.x1 - 4.2, stacks[(i * 3) % Math.max(1, stacks.length)]?.z ?? d.z]}
           offset={i * 2.3}
         />

@@ -17,7 +17,7 @@ function summarize(input: PlannerInput, r: PlannerResult, answers: QualifyAnswer
     `Nett: ${input.gridSpareKw === null ? "ukjent ledig effekt" : `${int(input.gridSpareKw)} kW ledig`}${r.gridDeficitKw > 0 ? `, mangler ${int(r.gridDeficitKw)} kW` : ""}`,
     `Batteri: ${int(input.batteryKwh)} kWh`,
     `Investering: ${kr(r.totalCost)}, støttegrunnlag ${kr(r.eligibleCost)}`,
-    `Enova: søker ${pct(input.supportRate)} = ${kr(r.support)} (${int(r.krPerKw)} kr/kW)`,
+    `Enova: søker ${pct(r.supportRate)} = ${kr(r.support)} (${int(r.krPerKw)} kr/kW)`,
     `Spart per år: ${kr(r.annual.totalSaving)}, ${int(r.annual.co2Tonnes)} t CO₂`,
     `Støttesjekk: ${q.verdict}, klar ${q.readiness}/100`,
     `Svar: foretaksreg. ${answers.registered}, eget depot ${answers.ownDepot}, kjøretøy ${answers.vehiclePlan}, startet ${answers.started}, 5 år ${answers.fiveYears}, nettselskap ${answers.gridTalked}`,
@@ -89,7 +89,7 @@ export default function LeadForm({
   return (
     <section className="lead" aria-labelledby="lead-title">
       <div className="lead-copy">
-        <h2 id="lead-title">Få søknaden vurdert før fristen</h2>
+        <h2 id="lead-title">Send inn, så tar vi kontakt</h2>
         <p>
           {theme.name} går gjennom tallene med dere, sjekker nettkapasiteten og setter opp et kostnadsgrunnlag dere kan
           søke Enova med. Det er gratis og uforpliktende.
@@ -136,7 +136,7 @@ export default function LeadForm({
           </p>
         )}
         <button type="submit" className="btn btn-primary wide" disabled={state === "sending"}>
-          {state === "sending" ? "Sender …" : `Send til ${theme.name}`}
+          {state === "sending" ? "Sender …" : "Få hjelp med søknaden"}
         </button>
         <p className="field-hint wide">
           Vi bruker opplysningene bare til å følge opp henvendelsen.

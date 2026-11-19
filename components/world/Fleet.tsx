@@ -6,7 +6,7 @@ import { Billboard, RoundedBox } from "@react-three/drei";
 import * as THREE from "three";
 import { B, C } from "./parts";
 import { P, mat } from "./palette";
-import { CHARGER_SIDE, ROW_W, type Layout, type VehicleModel } from "./layout";
+import { CHARGER_DX, CHARGER_Z, DOCK_W, REAR_Z, type Layout, type VehicleModel } from "./layout";
 import { buildRoutes, MIN_WAIT, newSim, PHASE_STATE, pose, step, type BaySim, type Pose } from "./sim";
 import { bayTexture, brandTexture } from "./textures";
 import { live } from "./live";
@@ -37,7 +37,7 @@ function Fleet({
   energy: string;
   reduced: boolean;
 }) {
-  const n = layout.bays.length;
+  const n = layout.docks.length;
   const brandMat = useMemo(
     () => new THREE.MeshStandardMaterial({ map: brandTexture(accent, energy, "100 % elektrisk"), roughness: 0.5 }),
     [accent, energy],
@@ -50,7 +50,7 @@ function Fleet({
   const routes = useMemo(() => buildRoutes(layout), [layout]);
 
   const sims = useRef<BaySim[]>([]);
-  const locks = useRef({ entry: -1, exit: -1 });
+  const locks = useRef({ yard: -1 });
   const trucks = useRef<(THREE.Group | null)[]>([]);
   const cables = useRef<(THREE.Mesh | null)[]>([]);
   const screens = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
@@ -65,21 +65,18 @@ function Fleet({
     const list = sims.current;
     if (list.length > n) {
       list.length = n;
-      if (locks.current.entry >= n) locks.current.entry = -1;
-      if (locks.current.exit >= n) locks.current.exit = -1;
     }
     const firstFill = list.length === 0;
     for (let i = list.length; i < n; i++) list.push(newSim(i, firstFill, rnd, reduced));
     // Biler som var på vei inn eller ut da rutene endret seg, starter på nytt utenfor bildet.
     for (const s of list) {
-      if (s.phase === "arrive" || s.phase === "depart") {
+      if (s.phase === "approach" || s.phase === "reverse" || s.phase === "depart") {
         s.phase = "wait";
         s.t = 0;
         s.dur = MIN_WAIT + rnd() * 2;
       }
     }
-    locks.current.entry = -1;
-    locks.current.exit = -1;
+    locks.current.yard = -1;
     if (live.bays.length !== n) {
       live.bays = list.map((s, i) => ({ id: i + 1, plate: s.plate, state: PHASE_STATE[s.phase], soc: s.soc }));
     }
@@ -87,14 +84,14 @@ function Fleet({
 
   const cableGeos = useMemo(
     () =>
-      layout.bays.map((b) => {
-        const cz = b.z + CHARGER_SIDE;
-        const socket = new THREE.Vector3(layout.chargerX - 0.1, 1.45, cz + 0.36);
-        const port = new THREE.Vector3(layout.xPark + layout.truckLen / 2 - 1.2, 1.35, b.z - 1.3);
+      layout.docks.map((d) => {
+        // Fra veggladeren ved porten til ladeporten bak på bilens høyre side.
+        const socket = new THREE.Vector3(d.x + CHARGER_DX - 0.2, 1.2, CHARGER_Z + 0.2);
+        const port = new THREE.Vector3(d.x + 1.28, 1.35, REAR_Z + 1.4);
         const curve = new THREE.CubicBezierCurve3(
           socket,
-          new THREE.Vector3(socket.x + 0.4, 0.15, cz + 0.6),
-          new THREE.Vector3(port.x + 0.6, 0.2, b.z - 1.6),
+          new THREE.Vector3(socket.x + 0.1, 0.25, CHARGER_Z + 0.7),
+          new THREE.Vector3(port.x + 0.7, 0.2, port.z - 0.2),
           port,
         );
         return new THREE.TubeGeometry(curve, 32, 0.07, 6, false);
@@ -128,7 +125,7 @@ function Fleet({
       if (g) {
         const px = g.position.x;
         const pz = g.position.z;
-        pose(s, routes[i], layout.bays[i].z, layout, ps);
+        pose(s, routes[i], layout.docks[i].x, layout, ps);
         g.visible = ps.visible;
         if (ps.visible) {
           g.position.set(ps.x, 0, ps.z);
@@ -203,34 +200,38 @@ function Fleet({
 
   return (
     <group>
-      {layout.bays.map((b, i) => (
+      {layout.docks.map((d, i) => (
         <group key={i}>
-          {/* Malt ladeplass langs raden */}
-          <mesh rotation={[-Math.PI / 2, 0, -Math.PI / 2]} position={[layout.xPark, 0.02, b.z]} material={bayMat} receiveShadow>
-            <planeGeometry args={[ROW_W - 0.8, layout.truckLen + 2]} />
+          {/* Malt plass foran rampen med gule styrelinjer */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[d.x, 0.02, layout.parkZ + 0.4]} material={bayMat} receiveShadow>
+            <planeGeometry args={[DOCK_W - 1.4, layout.truckLen + 1.2]} />
           </mesh>
-          {/* Puls på bakken mens bilen lader */}
+          {[-1, 1].map((side) => (
+            <mesh key={side} rotation={[-Math.PI / 2, 0, 0]} position={[d.x + side * 1.75, 0.03, layout.parkZ + 0.4]}>
+              <planeGeometry args={[0.14, layout.truckLen + 1.2]} />
+              <meshBasicMaterial color={P.lineYellow} />
+            </mesh>
+          ))}
+          {/* Puls på bakken under laderen mens bilen lader */}
           <mesh
             ref={(m) => {
               glows.current[i] = m;
             }}
             rotation={[-Math.PI / 2, 0, 0]}
-            position={[layout.chargerX, 0.04, b.z + CHARGER_SIDE]}
+            position={[d.x + CHARGER_DX, 0.04, 0.9]}
           >
-            <ringGeometry args={[0.6, 0.8, 32]} />
+            <ringGeometry args={[0.5, 0.68, 32]} />
             <meshBasicMaterial color={P.charge} transparent opacity={0.4} depthWrite={false} />
           </mesh>
           <Charger
-            x={layout.chargerX}
-            z={b.z + CHARGER_SIDE}
+            x={d.x + CHARGER_DX}
             energy={energy}
             screenRef={(m) => {
               screens.current[i] = m;
             }}
           />
           {/* Påkjøringsvern foran laderen */}
-          <C p={[layout.chargerX + 0.9, 0.45, b.z + CHARGER_SIDE]} s={[0.12, 0.9, 0.12]} c={P.lineYellow} />
-          <C p={[layout.chargerX - 0.9, 0.45, b.z + CHARGER_SIDE]} s={[0.12, 0.9, 0.12]} c={P.lineYellow} />
+          <C p={[d.x + CHARGER_DX, 0.5, 1.05]} s={[0.12, 1, 0.12]} c={P.lineYellow} />
           <mesh
             ref={(m) => {
               cables.current[i] = m;
@@ -271,34 +272,33 @@ export default memo(Fleet);
 
 /* ---------------------------- Lader ---------------------------- */
 
+/** DC-lader montert på veggen ved porten, med skjerm og kabelholder. */
 function Charger({
   x,
-  z,
   energy,
   screenRef,
 }: {
   x: number;
-  z: number;
   energy: string;
   screenRef: (m: THREE.MeshStandardMaterial | null) => void;
 }) {
   return (
-    <group position={[x, 0, z]}>
-      <B p={[0, 0.1, 0]} s={[1.1, 0.2, 0.9]} c="#c6cede" />
-      <RoundedBox args={[0.85, 2.3, 0.6]} radius={0.12} smoothness={3} position={[0, 1.35, 0]} castShadow receiveShadow>
+    <group position={[x, 0, CHARGER_Z]}>
+      <RoundedBox args={[0.78, 1.25, 0.3]} radius={0.08} smoothness={3} position={[0, 1.55, 0]} castShadow receiveShadow>
         <meshStandardMaterial color={P.charger} roughness={0.35} />
       </RoundedBox>
-      <RoundedBox args={[0.92, 0.32, 0.66]} radius={0.08} smoothness={3} position={[0, 2.5, 0]} castShadow>
+      <RoundedBox args={[0.84, 0.2, 0.36]} radius={0.06} smoothness={3} position={[0, 2.22, 0]} castShadow>
         <meshStandardMaterial color={energy} roughness={0.4} />
       </RoundedBox>
       {/* Skjerm */}
-      <mesh position={[0, 1.85, 0.305]}>
-        <planeGeometry args={[0.55, 0.42]} />
+      <mesh position={[0, 1.78, 0.16]}>
+        <planeGeometry args={[0.5, 0.34]} />
         <meshStandardMaterial ref={screenRef} color={P.charge} emissive={P.charge} emissiveIntensity={0.8} />
       </mesh>
       {/* Kontakt og holder */}
-      <B p={[0, 1.35, 0.33]} s={[0.22, 0.22, 0.08]} c="#1d2333" />
-      <B p={[-0.44, 1.2, 0]} s={[0.04, 1.4, 0.5]} c={energy} shadow={false} />
+      <B p={[0, 1.25, 0.18]} s={[0.2, 0.2, 0.08]} c="#1d2333" />
+      {/* Kabelkanal ned i bakken */}
+      <B p={[0, 0.48, 0.02]} s={[0.16, 0.95, 0.16]} c="#c6cede" shadow={false} />
     </group>
   );
 }
@@ -386,8 +386,8 @@ const Truck = forwardRef<THREE.Group, TruckProps>(function Truck(
           <B p={[nose - 0.2, 2.7, -W / 2 - 0.25]} s={[0.12, 0.5, 0.08]} c="#1d2333" />
           {/* Takspoiler */}
           <B p={[nose - 1.4, 3.75, 0]} s={[1.1, 0.4, W - 0.2]} c={accent} rough={0.4} />
-          {/* Ladeport (lyser grønt) */}
-          <mesh position={[nose - 1.2, 1.35, -W / 2 - 0.02]}>
+          {/* Ladeport bak på høyre side, nær rampen (lyser grønt) */}
+          <mesh position={[-L / 2 + 1.4, 1.35, -W / 2 - 0.02]}>
             <boxGeometry args={[0.3, 0.3, 0.04]} />
             <meshStandardMaterial color={P.charge} emissive={P.charge} emissiveIntensity={0.7} />
           </mesh>

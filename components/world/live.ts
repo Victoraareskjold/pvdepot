@@ -28,6 +28,6 @@ export const STATE_LABEL: Record<BayState, string> = {
   kobler: "Kobler til",
   lader: "Lader",
   ferdig: "Fulladet",
-  rygger: "Rygger ut",
+  rygger: "Rygger inn",
   kjorer: "Kjører ut",
 };

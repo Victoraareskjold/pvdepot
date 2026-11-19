@@ -23,7 +23,8 @@
   --stop: #b42318;
   --stop-bg: #fdecea;
   --radius: 14px;
-  --shadow: 0 1px 2px rgba(19, 35, 58, 0.06), 0 12px 32px -8px rgba(38, 56, 120, 0.22);
+  --shadow:
+    0 1px 2px rgba(19, 35, 58, 0.06), 0 12px 32px -8px rgba(38, 56, 120, 0.22);
   --font: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }
@@ -68,7 +69,6 @@ textarea {
     scroll-behavior: auto;
   }
 }
-
 
 /* ---------- Siden ---------- */
 
@@ -127,7 +127,6 @@ textarea {
   width: auto;
   height: 44px;
 }
-
 
 .hook h1 {
   margin: 0 0 20px;
@@ -370,7 +369,9 @@ textarea {
   height: 4px;
   border-radius: 2px;
   background: #d5dbea;
-  transition: background 0.3s, width 0.3s;
+  transition:
+    background 0.3s,
+    width 0.3s;
 }
 
 .scrolly-steps li.is-done {
@@ -436,7 +437,9 @@ textarea {
   scroll-snap-align: center;
   transform: rotateY(calc(var(--d) * -22deg)) scale(calc(1 - var(--ad) * 0.12));
   opacity: calc(1 - var(--ad) * 0.35);
-  transition: transform 0.15s linear, opacity 0.15s linear;
+  transition:
+    transform 0.15s linear,
+    opacity 0.15s linear;
   cursor: pointer;
   user-select: none;
 }
@@ -457,7 +460,6 @@ textarea {
 .slide-media img {
   object-fit: cover;
 }
-
 
 .slide figcaption {
   display: flex;
@@ -507,7 +509,9 @@ textarea {
   border-radius: 4px;
   background: #c7cddc;
   cursor: pointer;
-  transition: width 0.25s, background 0.25s;
+  transition:
+    width 0.25s,
+    background 0.25s;
 }
 
 .carousel-dots button.is-current {
@@ -539,9 +543,7 @@ textarea {
   gap: 18px;
 }
 
-
 /* ---------- Sanntidspanelet ---------- */
-
 
 .live {
   position: absolute;
@@ -817,7 +819,11 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 3px;
-  background: linear-gradient(to right, var(--accent) var(--fill), var(--line) var(--fill));
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill),
+    var(--line) var(--fill)
+  );
 }
 
 input[type="range"]::-moz-range-track {
@@ -978,7 +984,6 @@ input[type="range"]::-moz-range-thumb {
   gap: 16px;
   align-items: start;
 }
-
 
 .card h3 {
   margin: 0 0 12px;
@@ -1277,8 +1282,6 @@ input[type="range"]::-moz-range-thumb {
   display: block;
 }
 
-
-
 /* ---------- Mindre skjermer ---------- */
 
 @media (max-width: 1000px) {
@@ -1408,12 +1411,425 @@ input[type="range"]::-moz-range-thumb {
   background: #fff;
 }
 
-
 @media (max-width: 900px) {
   .pin {
     padding: 3px 8px 4px;
   }
   .pin-value {
     font-size: 12.5px;
+  }
+}
+
+/* ---------- Runde 19.11: rolig topp, slidere ved 3D, hjelp med søknaden ---------- */
+
+/* Mer luft øverst, én tydelig handling */
+.hook {
+  padding: 72px 0 72px;
+}
+
+.brand-logo {
+  height: 56px;
+}
+
+.hook-brand {
+  margin-bottom: 40px;
+}
+
+.hook-lede {
+  font-size: 19px;
+  max-width: 54ch;
+}
+
+.hook-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  margin-top: 36px;
+}
+
+.hook-deadline {
+  margin: 18px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+
+.hook-deadline strong {
+  color: var(--ink);
+}
+
+/* Nøkkeltall i panelet: to små og «spart» over hele bredden */
+.figures-box {
+  margin-top: 4px;
+}
+
+.tuner .kpi-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tuner .kpi {
+  padding: 12px 14px 13px;
+  box-shadow: none;
+  border: 1px solid var(--line);
+}
+
+.tuner .kpi dd {
+  font-size: 22px;
+}
+
+.tuner .kpi-dark {
+  grid-column: span 2;
+  border-color: var(--ink);
+}
+
+.tuner .kpi-dark dd {
+  font-size: 26px;
+}
+
+.kpi-note {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* Panelet med slidere */
+.tuner {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.tuner-title {
+  font-size: 21px !important;
+  margin: 0 !important;
+}
+
+.tuner .choice-option {
+  min-height: 38px;
+  padding: 6px 12px;
+}
+
+.more-body {
+  display: grid;
+  gap: 16px;
+}
+
+.more summary {
+  margin-bottom: 12px;
+}
+
+@media (min-width: 900px) {
+  /* Scenen og panelet deler samme rute og står begge fast mens man scroller. */
+  .scrolly {
+    display: grid;
+    /* Kort nok til at man ikke føler seg låst: ca. 40 % av en skjerm per stopp. */
+    height: calc(var(--stops, 5) * 40vh + 100vh);
+  }
+
+  .scrolly-sticky,
+  .tuner {
+    grid-area: 1 / 1;
+    position: sticky;
+    align-self: start;
+  }
+
+  .scrolly-sticky {
+    top: 0;
+  }
+
+  .tuner {
+    top: 36px;
+    margin-top: 36px;
+    z-index: 5;
+    width: 404px;
+    margin-left: 40px;
+    max-height: calc(100vh - 72px);
+    max-height: calc(100svh - 72px);
+    overflow-y: auto;
+    padding: 20px 20px 18px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 16px 40px -14px rgba(38, 56, 120, 0.35);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    scrollbar-width: thin;
+  }
+
+  /* Teksten om hva man ser flyttes til høyre, panelet har venstre side. */
+  .scrolly-caption {
+    left: auto;
+    right: 20px;
+    width: min(400px, calc(100% - 500px));
+  }
+
+  .live {
+    top: 86px;
+    bottom: auto;
+    width: 340px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .live {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  /* Mobil: scenen står fast øverst, panelet scroller under den. */
+  .scrolly-sticky {
+    height: 52vh;
+    height: 52svh;
+    z-index: 2;
+  }
+
+  .tuner {
+    position: relative;
+    z-index: 1;
+    padding: 18px 16px 40px;
+    background: var(--page);
+  }
+
+  .scrolly-caption {
+    padding: 10px 12px 12px;
+  }
+
+  .scrolly-caption h2 {
+    font-size: 18px;
+  }
+
+  .scrolly-caption p {
+    font-size: 13.5px;
+    line-height: 1.4;
+  }
+
+  .scrolly-steps {
+    margin-bottom: 8px;
+  }
+}
+
+/* Hele regnestykket */
+.calc-details {
+  padding: 56px 0 8px;
+}
+
+.calc-details-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ledger tr.extra td {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.rank-figure.is-warning .big {
+  color: var(--warn);
+}
+
+/* Hvordan vi hjelper med søknaden */
+.help {
+  padding: 104px 0 72px;
+}
+
+.help-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
+  margin: 36px 0 40px;
+  padding: 0;
+  list-style: none;
+  counter-reset: help;
+}
+
+.help-steps li {
+  counter-increment: help;
+  position: relative;
+  padding-top: 52px;
+}
+
+.help-steps li::before {
+  content: counter(help);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+}
+
+.help-steps li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 48px;
+  right: -16px;
+  height: 2px;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.help-steps h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-stretch: 112%;
+}
+
+.help-steps p {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.help-cta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+}
+
+.help-cta p {
+  margin: 0;
+  color: var(--ink-2);
+  max-width: 44ch;
+}
+
+/* Svevende knapp */
+.float-cta {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 30;
+  padding: 14px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--energy);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+  font-stretch: 110%;
+  box-shadow: 0 10px 28px -6px rgba(19, 35, 58, 0.45);
+  cursor: pointer;
+  transform: translate(-50%, 160%);
+  transition: transform 0.3s ease;
+}
+
+.float-cta.is-shown {
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .float-cta {
+    transition: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .hook {
+    padding: 36px 0 44px;
+  }
+  .brand-logo {
+    height: 44px;
+  }
+  .hook-brand {
+    margin-bottom: 28px;
+  }
+  .hook-lede {
+    font-size: 16.5px;
+  }
+  .hook-actions .btn {
+    width: 100%;
+  }
+  .help {
+    padding: 64px 0 40px;
+  }
+  .help-steps {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .help-steps li {
+    padding: 0 0 0 52px;
+  }
+  .help-steps li:not(:last-child)::after {
+    display: none;
+  }
+  .help-cta .btn {
+    width: 100%;
+  }
+  .figures-details {
+    grid-template-columns: 1fr;
+  }
+}
+
+.float-cta {
+  white-space: nowrap;
+}
+
+@media (max-width: 899px) {
+  .float-cta {
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+    transform: translateY(160%);
+  }
+  .float-cta.is-shown {
+    transform: translateY(0);
+  }
+  /* Liten tekstboks over scenen på mobil, så depotet synes. */
+  .scrolly-caption p {
+    display: none;
+  }
+  .compass small {
+    display: none;
+  }
+}
+
+/* Fremdrift og «Hopp videre» i tekstboksen ved 3D-scenen */
+.scrolly-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.scrolly-head .scrolly-steps {
+  margin: 0;
+}
+
+.scrolly-count {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.scrolly-skip {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.scrolly-skip:hover {
+  color: var(--ink);
+  border-color: var(--ink-2);
+}
+
+@media (max-width: 899px) {
+  .scrolly-head {
+    margin-bottom: 8px;
   }
 }

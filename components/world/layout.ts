@@ -4,13 +4,15 @@ import * as THREE from "three";
  * Hvor alt står i verdenen. 1 enhet ≈ 1 meter, men bygget er stilisert
  * (mindre enn virkeligheten) så lastebilene synes.
  *
- * Akser: x mot høyre, z mot kameraet (fremover), y opp. Fasaden peker mot +z.
+ * Akser: x mot høyre, z mot kameraet (fremover), y opp.
+ * Himmelretning: fasaden (+z) vender mot sørvest, nord er rett opp på
+ * skjermen. Lasterampene sitter på fasaden, så bilene og laderne vender
+ * også mot sørvest.
  *
- * Ladeplassene er gjennomkjøringsrader foran bygget, parallelt med fasaden:
- * bilene svinger inn fra veien i innkjøringen til venstre, kjører langs
- * raden til DC-laderen ved fronten, og kjører rett ut til høyre etter
- * lading. Ingen rygging og ingen møtende trafikk. Batteriene står i et
- * rutenett til venstre for bygget, inverter og styring på høyre hjørne.
+ * Lastebilene lader ved lasterampene: de kjører langs veien, stopper
+ * forbi rampen sin og rygger inn. Laderen henger på veggen ved porten.
+ * Etter lading kjører bilen rett frem ut og videre til høyre.
+ * Batteriene står i et rutenett foran til venstre, godt synlig.
  */
 
 export type VehicleModel = "rigid" | "semi" | "bus";
@@ -25,33 +27,39 @@ export interface WorldParams {
   chargerKw: number;
 }
 
-/** Avstand mellom radene */
-export const ROW_W = 5.6;
-/** Første rad (nærmest bygget) */
-export const ROW0_Z = 7;
+/** Avstand mellom portene */
+export const DOCK_W = 5.4;
+export const DOOR_W = 3.4;
+/** Bakenden på bilen stopper her (støtfangerne på rampen) */
+export const REAR_Z = 0.9;
 export const TURN_R = 7;
-/** Strekningen bilen bruker på å bremse inn til laderen eller akselerere ut */
+/** Strekningen bilen bremser inn til stopp eller akselererer ut */
 export const EASE_D = 9;
-/** Laderen står ved fronten, på byggsiden av raden */
-export const CHARGER_SIDE = -2.3;
+/** Laderen henger på veggen til høyre for porten */
+export const CHARGER_DX = DOOR_W / 2 + 0.6;
+export const CHARGER_Z = 0.28;
 
 export function truckLength(m: VehicleModel) {
   return m === "semi" ? 14 : m === "bus" ? 12 : 9.5;
 }
 
+export function officeWidth(w: number) {
+  return Math.min(14, w * 0.3);
+}
+
 export interface Layout {
   building: { w: number; d: number; h: number; cx: number; cz: number };
-  /** Ladeplasser: én rad per plass */
-  bays: { z: number }[];
-  /** Innkjøringen (x), parkering (sentrum av bilen), lader og utkjøringen */
-  xIn: number;
-  xPark: number;
-  chargerX: number;
-  xOut: number;
+  /** Lasterampene på fasaden, én per ladeplass */
+  docks: { x: number }[];
+  /** Sentrum av parkert bil (z) */
+  parkZ: number;
+  /** Der ryggingen går over fra sving til rett linje (z) */
+  reverseZ: number;
   laneZ: number;
   roadZ: number;
   truckLen: number;
-  docks: { z: number }[];
+  /** Sidedører på høyre gavl (gaffeltruckene) */
+  sideDoors: { z: number }[];
   battery: { slots: { x: number; z: number }[]; len: number } | null;
   transformer: { x: number; z: number; upgraded: boolean };
   inverter: { x: number; z: number };
@@ -65,31 +73,31 @@ export interface Layout {
 }
 
 export function computeLayout(p: WorldParams): Layout {
-  const w = THREE.MathUtils.clamp(30 + Math.sqrt(p.roofM2) * 0.26, 34, 66);
-  const d = THREE.MathUtils.clamp(w * 0.46, 18, 28);
+  const n = Math.max(0, p.bays);
+  // Bygget må være bredt nok til kontoret og alle portene.
+  const roofW = 30 + Math.sqrt(p.roofM2) * 0.26;
+  const needW = 14 + 4 + n * DOCK_W + 4;
+  const w = THREE.MathUtils.clamp(Math.max(roofW, needW), 34, 80);
+  const d = THREE.MathUtils.clamp(w * 0.42, 18, 28);
   const h = 8.5;
   const building = { w, d, h, cx: 0, cz: -d / 2 };
 
   const truckLen = truckLength(p.vehicleModel);
-  const n = Math.max(0, p.bays);
-  const bays = Array.from({ length: n }, (_, i) => ({ z: ROW0_Z + i * ROW_W }));
-  const lastZ = bays[n - 1]?.z ?? ROW0_Z;
+  const officeW = officeWidth(w);
+  const x0 = -w / 2 + officeW + 4 + DOCK_W / 2;
+  const docks = Array.from({ length: n }, (_, i) => ({ x: x0 + i * DOCK_W }));
+  const lastX = docks[n - 1]?.x ?? x0;
 
-  // Raden: sving inn, halen fri av innkjøringen før bremsing, lader, utkjøring.
-  // Utkjøringssvingen starter først når hele bilen er forbi laderen, ellers sveiper halen inn i den.
-  const rowSpan = TURN_R + truckLen + EASE_D + 1 + truckLen / 2 + 0.4 + truckLen / 2 + 2 + TURN_R;
-  const xIn = -rowSpan / 2 - 2;
-  const xPark = xIn + TURN_R + truckLen / 2 + EASE_D + 1;
-  const chargerX = xPark + truckLen / 2 + 0.4;
-  const xOut = chargerX + truckLen / 2 + 2 + TURN_R;
-
-  const laneZ = lastZ + TURN_R * 2 + 1;
+  const parkZ = REAR_Z + truckLen / 2;
+  // Rett rygging minst en billengde inn, så bilen er rett før den går mellom naboene.
+  const reverseZ = parkZ + truckLen * 0.75 + 2;
+  const laneZ = reverseZ + TURN_R;
   const roadZ = laneZ + 2.2;
 
-  const docks: { z: number }[] = [];
-  for (let z = -4; z > -d + 3; z -= 5.5) docks.push({ z });
+  const sideDoors = [{ z: -5 }, { z: -11 }].filter((s) => s.z > -d + 2);
 
-  // Batterier i rutenett (to kolonner) til venstre for bygget, som i skissen.
+  // Batterier i rutenett på gårdsplassen foran kontoret, rett i synsfeltet.
+  // Holder seg til venstre for første rampe og bak kjørefeltet.
   const containers = p.batteryKwh > 0 ? Math.min(6, Math.max(1, Math.ceil(p.batteryKwh / 500))) : 0;
   const len = THREE.MathUtils.clamp(3.5 + p.batteryKwh / 400, 4, 6);
   const battery =
@@ -97,21 +105,20 @@ export function computeLayout(p: WorldParams): Layout {
       ? {
           len,
           slots: Array.from({ length: containers }, (_, i) => ({
-            x: -w / 2 - 3.5 - len / 2 - (i % 2) * (len + 1.4),
-            z: -3 - Math.floor(i / 2) * 3.4,
+            x: -w / 2 + 1.2 + len / 2 + (i % 2) * (len + 1.4),
+            z: 6.4 + Math.floor(i / 2) * 3.4,
           })),
         }
       : null;
 
-  const batteryLeft = battery ? -w / 2 - 3.5 - len * 2 - 1.4 : -w / 2;
-  const transformer = { x: Math.min(batteryLeft, -w / 2 - 4) - 5, z: 3, upgraded: p.gridUpgrade };
-  const inverter = { x: w / 2 - 1.2, z: 0.9 };
-  const crane = { x: Math.max(w / 2 + 8, xOut + TURN_R + 7), z: 5 };
-  const forkliftYard = { x0: w / 2 + 3, x1: w / 2 + 15, z0: -d + 2, z1: -2 };
+  const transformer = { x: -w / 2 - 7, z: 2, upgraded: p.gridUpgrade };
+  const inverter = { x: w / 2 + 1.3, z: -1.6 };
+  const crane = { x: w / 2 + 9, z: 6 };
+  const forkliftYard = { x0: w / 2 + 3, x1: w / 2 + 15, z0: -d + 2, z1: -3.5 };
 
   const bounds = {
-    minX: Math.min(transformer.x - 8, xIn - TURN_R - 6),
-    maxX: Math.max(w / 2 + 20, crane.x + 8, xOut + TURN_R + 4),
+    minX: transformer.x - 9,
+    maxX: Math.max(w / 2 + 20, crane.x + 8, lastX + TURN_R + truckLen + 4),
     minZ: -d - 4,
     maxZ: roadZ + 7,
   };
@@ -122,11 +129,11 @@ export function computeLayout(p: WorldParams): Layout {
   const margin = 1.6;
   const cols = Math.floor((w - margin * 2) / (panelSize.w + 0.12));
   const rowsAvail = Math.floor((d - margin * 2) / (panelSize.d + 0.7));
-  const x0 = -((cols - 1) * (panelSize.w + 0.12)) / 2;
+  const px0 = -((cols - 1) * (panelSize.w + 0.12)) / 2;
   for (let r = 0; r < rowsAvail; r++) {
     const z = -margin - panelSize.d / 2 - r * (panelSize.d + 0.7);
     for (let c = 0; c < cols; c++) {
-      const x = x0 + c * (panelSize.w + 0.12);
+      const x = px0 + c * (panelSize.w + 0.12);
       if (isHvac(x, z, w, d)) continue;
       roofSlots.push(new THREE.Vector3(x, h + 0.55, z));
     }
@@ -134,15 +141,13 @@ export function computeLayout(p: WorldParams): Layout {
 
   return {
     building,
-    bays,
-    xIn,
-    xPark,
-    chargerX,
-    xOut,
+    docks,
+    parkZ,
+    reverseZ,
     laneZ,
     roadZ,
     truckLen,
-    docks,
+    sideDoors,
     battery,
     transformer,
     inverter,
@@ -169,36 +174,41 @@ function isHvac(x: number, z: number, w: number, d: number) {
 
 const v = (x: number, z: number) => new THREE.Vector3(x, 0, z);
 
-/**
- * Inn: langs veien fra venstre, opp innkjøringen, sving inn i raden og frem
- * til laderen. Returnerer ruten og hvor langt det er til innkjøringen er
- * forlatt (da kan neste bil slippes inn).
- */
-export function arrivalPath(rowZ: number, l: Layout) {
-  const R = TURN_R;
+/** Inn langs veien fra venstre til stoppunktet like forbi rampen. Kjøres forover. */
+export function approachPath(dockX: number, l: Layout) {
   const path = new THREE.CurvePath<THREE.Vector3>();
-  const start = v(l.bounds.minX - 40, l.laneZ);
-  path.add(new THREE.LineCurve3(start, v(l.xIn - R, l.laneZ)));
-  path.add(new THREE.QuadraticBezierCurve3(v(l.xIn - R, l.laneZ), v(l.xIn, l.laneZ), v(l.xIn, l.laneZ - R)));
-  if (l.laneZ - R > rowZ + R + 0.01) path.add(new THREE.LineCurve3(v(l.xIn, l.laneZ - R), v(l.xIn, rowZ + R)));
-  path.add(new THREE.QuadraticBezierCurve3(v(l.xIn, rowZ + R), v(l.xIn, rowZ), v(l.xIn + R, rowZ)));
-  const beforeRow = path.getLength();
-  path.add(new THREE.LineCurve3(v(l.xIn + R, rowZ), v(l.xPark, rowZ)));
-  // Halen er ute av innkjøringen når bilen har kjørt en billengde inn i raden.
-  return { path, clearAt: beforeRow + l.truckLen / 2 + 1.5 };
+  path.add(new THREE.LineCurve3(v(l.bounds.minX - 40, l.laneZ), v(dockX + TURN_R, l.laneZ)));
+  return path;
 }
 
-/** Ut: rett frem forbi laderen, ned utkjøringen og videre til høyre. */
-export function departPath(rowZ: number, l: Layout) {
-  const R = TURN_R;
+/**
+ * Rygging inn til rampen: fra stoppunktet svinger bakenden inn mot porten,
+ * så rett bakover til støtfangerne. Kurven beskriver bevegelsen; bilen
+ * peker motsatt vei.
+ */
+export function reversePath(dockX: number, l: Layout) {
   const path = new THREE.CurvePath<THREE.Vector3>();
-  path.add(new THREE.LineCurve3(v(l.xPark, rowZ), v(l.xOut - R, rowZ)));
-  const enterAisle = path.getLength();
-  path.add(new THREE.QuadraticBezierCurve3(v(l.xOut - R, rowZ), v(l.xOut, rowZ), v(l.xOut, rowZ + R)));
-  if (l.laneZ - R > rowZ + R + 0.01) path.add(new THREE.LineCurve3(v(l.xOut, rowZ + R), v(l.xOut, l.laneZ - R)));
-  path.add(new THREE.QuadraticBezierCurve3(v(l.xOut, l.laneZ - R), v(l.xOut, l.laneZ), v(l.xOut + R, l.laneZ)));
+  path.add(
+    new THREE.QuadraticBezierCurve3(v(dockX + TURN_R, l.laneZ), v(dockX, l.laneZ), v(dockX, l.reverseZ)),
+  );
+  path.add(new THREE.LineCurve3(v(dockX, l.reverseZ), v(dockX, l.parkZ)));
+  return path;
+}
+
+/**
+ * Ut: rett frem fra rampen, sving til høyre ut på veien og videre.
+ * clearAt er strekningen der bilen er forbi alle stoppunktene, så neste
+ * bil kan slippes inn uten å ta den igjen.
+ */
+export function departPath(dockX: number, l: Layout) {
+  const path = new THREE.CurvePath<THREE.Vector3>();
+  path.add(new THREE.LineCurve3(v(dockX, l.parkZ), v(dockX, l.reverseZ)));
+  path.add(
+    new THREE.QuadraticBezierCurve3(v(dockX, l.reverseZ), v(dockX, l.laneZ), v(dockX + TURN_R, l.laneZ)),
+  );
   const onRoad = path.getLength();
-  path.add(new THREE.LineCurve3(v(l.xOut + R, l.laneZ), v(l.bounds.maxX + 40, l.laneZ)));
-  // Utkjøringen er fri når halen er kommet et stykke ut på veien.
-  return { path, enterAisle, clearAt: onRoad + l.truckLen + 2 };
+  const lastX = l.docks[l.docks.length - 1]?.x ?? dockX;
+  const clearX = lastX + TURN_R + l.truckLen + 3;
+  path.add(new THREE.LineCurve3(v(dockX + TURN_R, l.laneZ), v(l.bounds.maxX + 40, l.laneZ)));
+  return { path, clearAt: onRoad + Math.max(0, clearX - (dockX + TURN_R)) };
 }

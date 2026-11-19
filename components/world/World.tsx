@@ -231,18 +231,19 @@ function CameraRig({
 }
 
 function focusBox(l: Layout, shot: Shot): THREE.Box3 {
-  const { bounds: b, building: bd, bays } = l;
-  const lastZ = bays[bays.length - 1]?.z ?? 8;
+  const { bounds: b, building: bd, docks } = l;
+  const firstX = docks[0]?.x ?? 0;
+  const lastX = docks[docks.length - 1]?.x ?? 0;
   switch (shot) {
     case "fleet":
-      return new THREE.Box3(new THREE.Vector3(l.xIn - TURN_R / 2, 0, 1), new THREE.Vector3(l.xOut + TURN_R / 2, 5, lastZ + 5));
+      return new THREE.Box3(
+        new THREE.Vector3(firstX - 6, 0, -3),
+        new THREE.Vector3(lastX + TURN_R + 4, bd.h, l.laneZ + 1),
+      );
     case "roof":
       return new THREE.Box3(new THREE.Vector3(-bd.w / 2, 0, -bd.d - 1), new THREE.Vector3(Math.max(bd.w / 2 + 2, l.crane.x + 3), bd.h + 4, 8));
     case "energy":
-      return new THREE.Box3(
-        new THREE.Vector3(b.minX + 2, 0, -bd.d * 0.75),
-        new THREE.Vector3(l.chargerX + 4, 4, Math.min(lastZ + 2, 22)),
-      );
+      return new THREE.Box3(new THREE.Vector3(b.minX + 3, 0, -6), new THREE.Vector3(firstX + 8, 6, 13));
     case "hero":
       return new THREE.Box3(new THREE.Vector3(b.minX + 6, 0, -bd.d), new THREE.Vector3(b.maxX - 4, bd.h, l.roadZ));
     default:

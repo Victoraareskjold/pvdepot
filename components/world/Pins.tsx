@@ -3,7 +3,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, type RefObject } from "react";
 import * as THREE from "three";
-import { CHARGER_SIDE, type Layout } from "./layout";
+import type { Layout } from "./layout";
 
 export interface PinLabels {
   chargers: string;
@@ -23,15 +23,15 @@ export interface PinDef {
 
 /** Hvilke merkelapper som vises, og hvor de henger i verdenen. */
 export function pinDefs(layout: Layout, labels: PinLabels): PinDef[] {
-  const { building: b, bays, battery, transformer, inverter } = layout;
+  const { building: b, docks, battery, transformer, inverter } = layout;
   const out: PinDef[] = [];
-  if (bays.length) {
-    const mid = (bays[0].z + bays[bays.length - 1].z) / 2;
+  if (docks.length) {
+    const mid = (docks[0].x + docks[docks.length - 1].x) / 2;
     out.push({
       id: "chargers",
-      position: [layout.chargerX, 4.6, mid + CHARGER_SIDE],
+      position: [mid, b.h + 0.6, 0.4],
       tone: "charge",
-      title: "DC-ladere",
+      title: "DC-lading på rampene",
       value: labels.chargers,
     });
   }

@@ -74,10 +74,10 @@ export const ASSUMPTIONS = {
   gridUpgradeFixedCost: 400_000,
   gridUpgradeCostPerKw: 1_200,
   /**
-   * Om nettforsterkning tas med i Enova-grunnlaget. Programsiden sier ikke
-   * noe om dette. Vi regner konservativt (false) til vilkårene er lest.
+   * Nettforsterkning kan tas med i Enova-grunnlaget (Smart Elektro, 19.11.2026:
+   * vilkårene sier at både nett og sol kan være med i søknaden).
    */
-  gridUpgradeEligible: false,
+  gridUpgradeEligible: true,
 
   /** Stasjonært batteri */
   batteryFixedCost: 150_000,
@@ -96,11 +96,8 @@ export const ASSUMPTIONS = {
   solarYieldKwhPerKwp: 850,
   /** Andel av solstrømmen bygget bruker selv (resten selges) */
   solarSelfUse: 0.7,
-  /**
-   * Enova godtar bare den delen av egenproduksjonen som kvalifiserer.
-   * Grensene er ikke publisert på programsiden, så sol holdes utenfor.
-   */
-  solarEligible: false,
+  /** Solceller kan tas med i Enova-grunnlaget (se nettforsterkning over). */
+  solarEligible: true,
 
   /** Strøm og diesel, kr eks. mva. */
   electricityPrice: 1.0,
@@ -119,10 +116,11 @@ export const ASSUMPTIONS = {
   /** Periode for «spart over N år» (ladere og batteri varer typisk 10–15 år) */
   analysisYears: 10,
   /**
-   * Hittil laveste vinnende kr per kW i forrige runde. Hent tallet fra
-   * Enovas Power BI-statistikk. null = vis ikke sammenligning.
+   * Grensen for å få støtte i de siste rundene: bare søknader under ca.
+   * 4 200 kr per kW ladeeffekt har fått tilsagn (Smart Elektro, 19.11.2026).
+   * Ladeeffekten er effekten med laststyring, ikke summen av alle laderne.
    */
-  enovaHistoricalCutoffKrPerKw: null as number | null,
+  enovaHistoricalCutoffKrPerKw: 4_200 as number | null,
 } as const;
 
 export function solarCostPerKwp(kwp: number): number {

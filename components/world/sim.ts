@@ -1,21 +1,34 @@
 import * as THREE from "three";
-import { arrivalPath, departPath, EASE_D, type Layout } from "./layout";
+import { approachPath, departPath, EASE_D, reversePath, type Layout } from "./layout";
 import type { BayState } from "./live";
 
 /**
  * Trafikken på depotet, uten 3D. Brukes av Fleet og av testene.
  *
- * Hver ladeplass har en bil som går i sløyfe: vent, kjør inn, koble til,
- * lad, koble fra, vent på fri utkjøring, kjør ut. Bare én bil i
- * innkjøringen og én i utkjøringen om gangen. Bilene holder fast fart på
- * delte strekninger og bremser/akselererer bare i sin egen rad.
+ * Hver lasterampe har en bil som går i sløyfe: vent, kjør inn langs veien,
+ * rygg inn til rampen, koble til, lad, koble fra, vent på fri gård, kjør ut.
+ *
+ * Trafikkstyring: bare én bil i bevegelse på gården om gangen (inn, rygging
+ * eller ut). Rygging mellom parkerte biler er det som oftest går galt i
+ * virkeligheten også, så her slipper ingen andre til før bilen står.
+ * En bil som kjører ut, slipper gården når den er forbi alle stoppunktene;
+ * neste bil kommer bakfra i samme fart og tar den aldri igjen.
  */
 
-export type Phase = "wait" | "arrive" | "connect" | "charge" | "disconnect" | "ready" | "depart";
+export type Phase =
+  | "wait"
+  | "approach"
+  | "reverse"
+  | "connect"
+  | "charge"
+  | "disconnect"
+  | "ready"
+  | "depart";
 
 export const PHASE_STATE: Record<Phase, BayState> = {
   wait: "ledig",
-  arrive: "ankommer",
+  approach: "ankommer",
+  reverse: "rygger",
   connect: "kobler",
   charge: "lader",
   disconnect: "ferdig",
@@ -39,25 +52,29 @@ export interface Route {
 }
 
 export interface BayRoutes {
-  arrive: Route;
+  approach: Route;
+  reverse: Route;
   depart: Route;
 }
 
 export interface Locks {
-  entry: number;
-  exit: number;
+  /** Rampen som har gården, eller −1 */
+  yard: number;
 }
 
 export const SPEED = 13;
+export const REVERSE_SPEED = 3.6;
 export const MIN_WAIT = 0.8;
 
 export function buildRoutes(layout: Layout): BayRoutes[] {
-  return layout.bays.map((b) => {
-    const a = arrivalPath(b.z, layout);
-    const d = departPath(b.z, layout);
+  return layout.docks.map((d) => {
+    const a = approachPath(d.x, layout);
+    const r = reversePath(d.x, layout);
+    const o = departPath(d.x, layout);
     return {
-      arrive: { path: a.path, length: a.path.getLength(), clearAt: a.clearAt },
-      depart: { path: d.path, length: d.path.getLength(), clearAt: d.clearAt },
+      approach: { path: a, length: a.getLength(), clearAt: 0 },
+      reverse: { path: r, length: r.getLength(), clearAt: 0 },
+      depart: { path: o.path, length: o.path.getLength(), clearAt: o.clearAt },
     };
   });
 }
@@ -79,7 +96,12 @@ export function departS(t: number) {
 }
 export const departDur = (S: number) => (2 * EASE_D) / SPEED + (S - EASE_D) / SPEED;
 
-export const chargeTime = (soc: number) => 6 + (1 - soc) * 14;
+/** Rygging: myk start og stopp. */
+const smooth = (k: number) => k * k * (3 - 2 * k);
+export const reverseDur = (S: number) => S / REVERSE_SPEED;
+
+/** Ladetiden er lang nok til at de fleste rampene er i bruk mens én bil beveger seg. */
+export const chargeTime = (soc: number) => 40 + (1 - soc) * 60;
 
 export function makePlate(i: number) {
   return `EL ${String(10 + ((i * 37) % 89)).padStart(2, "0")}${String((i * 523 + 101) % 1000).padStart(3, "0")}`;
@@ -90,34 +112,40 @@ function nextPlate(p: string) {
   return `${p.slice(0, -3)}${String(num).padStart(3, "0")}`;
 }
 
-/** Ny plass: de første lader allerede, så scenen er levende fra start. */
+/** Ny rampe: de fleste lader allerede, så scenen er levende fra start. */
 export function newSim(i: number, firstFill: boolean, rnd: () => number, reduced: boolean): BaySim {
   const plate = makePlate(i);
-  if (firstFill && (reduced || i % 3 !== 2)) {
-    const soc = 0.3 + rnd() * 0.5;
-    return { phase: "charge", t: 0, dur: chargeTime(soc), soc, socStart: soc, plate };
+  if (firstFill && (reduced || i % 3 !== 1)) {
+    const soc = 0.25 + rnd() * 0.65;
+    const dur = chargeTime(0.2);
+    // Start midt i ladingen, så bilene blir ferdige til ulik tid.
+    return { phase: "charge", t: dur * soc, dur, soc, socStart: 0.2, plate };
   }
   return { phase: "wait", t: 0, dur: MIN_WAIT + rnd() * 3, soc: 0.2, socStart: 0.2, plate };
 }
 
-/** Ett tidssteg for alle plassene. */
+/** Ett tidssteg for alle rampene. */
 export function step(list: BaySim[], routes: BayRoutes[], lk: Locks, dt: number, rnd: () => number = Math.random) {
   for (let i = 0; i < list.length; i++) {
     const s = list[i];
     const r = routes[i];
     s.t += dt;
 
-    if (s.phase === "wait" && s.t >= s.dur && lk.entry === -1) {
-      s.phase = "arrive";
+    if (s.phase === "wait" && s.t >= s.dur && lk.yard === -1) {
+      s.phase = "approach";
       s.t = 0;
-      s.dur = arriveDur(r.arrive.length);
+      s.dur = arriveDur(r.approach.length);
       s.socStart = s.soc = 0.15 + rnd() * 0.3;
-      lk.entry = i;
-    } else if (s.phase === "arrive" && s.t >= s.dur) {
+      lk.yard = i;
+    } else if (s.phase === "approach" && s.t >= s.dur) {
+      s.phase = "reverse";
+      s.t = 0;
+      s.dur = reverseDur(r.reverse.length);
+    } else if (s.phase === "reverse" && s.t >= s.dur) {
       s.phase = "connect";
       s.t = 0;
       s.dur = 1.4;
-      if (lk.entry === i) lk.entry = -1;
+      if (lk.yard === i) lk.yard = -1;
     } else if (s.phase === "connect" && s.t >= s.dur) {
       s.phase = "charge";
       s.t = 0;
@@ -131,22 +159,21 @@ export function step(list: BaySim[], routes: BayRoutes[], lk: Locks, dt: number,
     } else if (s.phase === "disconnect" && s.t >= s.dur) {
       s.phase = "ready";
       s.t = 0;
-    } else if (s.phase === "ready" && lk.exit === -1) {
+    } else if (s.phase === "ready" && lk.yard === -1) {
       s.phase = "depart";
       s.t = 0;
       s.dur = departDur(r.depart.length);
-      lk.exit = i;
+      lk.yard = i;
     } else if (s.phase === "depart" && s.t >= s.dur) {
       s.phase = "wait";
       s.t = 0;
-      s.dur = MIN_WAIT + rnd() * 3;
+      s.dur = MIN_WAIT + rnd() * 4;
       s.plate = nextPlate(s.plate);
-      if (lk.exit === i) lk.exit = -1;
+      if (lk.yard === i) lk.yard = -1;
     }
 
-    // Slipp låsene så snart bilen er ute av den delte strekningen.
-    if (s.phase === "arrive" && lk.entry === i && arriveS(s.t, r.arrive.length) >= r.arrive.clearAt) lk.entry = -1;
-    if (s.phase === "depart" && lk.exit === i && departS(s.t) >= r.depart.clearAt) lk.exit = -1;
+    // Bilen som kjører ut, slipper gården når den er forbi alle stoppunktene.
+    if (s.phase === "depart" && lk.yard === i && departS(s.t) >= r.depart.clearAt) lk.yard = -1;
 
     if (s.phase === "charge") s.soc = s.socStart + (1 - s.socStart) * Math.min(1, s.t / s.dur);
   }
@@ -163,25 +190,41 @@ export interface Pose {
 const _p = new THREE.Vector3();
 const _t = new THREE.Vector3();
 
-export function pose(s: BaySim, r: BayRoutes, rowZ: number, layout: Layout, out: Pose): Pose {
+/** Parkert ved rampen: fronten mot sørvest (+z). */
+export const PARKED_YAW = -Math.PI / 2;
+
+export function pose(s: BaySim, r: BayRoutes, dockX: number, layout: Layout, out: Pose): Pose {
   if (s.phase === "wait") {
     out.visible = false;
     return out;
   }
   out.visible = true;
-  if (s.phase === "arrive" || s.phase === "depart") {
-    const route = s.phase === "arrive" ? r.arrive : r.depart;
-    const dist = s.phase === "arrive" ? arriveS(s.t, route.length) : departS(s.t);
+  let route: Route | null = null;
+  let dist = 0;
+  let backwards = false;
+  if (s.phase === "approach") {
+    route = r.approach;
+    dist = arriveS(s.t, route.length);
+  } else if (s.phase === "reverse") {
+    route = r.reverse;
+    dist = route.length * smooth(Math.min(1, s.t / s.dur));
+    backwards = true;
+  } else if (s.phase === "depart") {
+    route = r.depart;
+    dist = departS(s.t);
+  }
+  if (route) {
     const u = Math.min(1, Math.max(0, dist / route.length));
     route.path.getPointAt(u, _p);
     route.path.getTangentAt(u, _t);
     out.x = _p.x;
     out.z = _p.z;
-    out.yaw = Math.atan2(-_t.z, _t.x);
+    // Rygger: bilen peker motsatt av bevegelsen.
+    out.yaw = backwards ? Math.atan2(_t.z, -_t.x) : Math.atan2(-_t.z, _t.x);
   } else {
-    out.x = layout.xPark;
-    out.z = rowZ;
-    out.yaw = 0;
+    out.x = dockX;
+    out.z = layout.parkZ;
+    out.yaw = PARKED_YAW;
   }
   return out;
 }

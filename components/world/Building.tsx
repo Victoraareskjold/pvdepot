@@ -4,7 +4,7 @@ import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { B, C } from "./parts";
 import { P, mat } from "./palette";
-import { hvacUnits, type Layout } from "./layout";
+import { DOOR_W, hvacUnits, officeWidth, type Layout } from "./layout";
 import { signTexture, wallTexture } from "./textures";
 
 /** Lagerbygget: bølgeblikkvegger, kontorfløy i glass, porter og lasteramper. */
@@ -27,7 +27,7 @@ function Building({ layout, accent, sign }: { layout: Layout; accent: string; si
     [sign, accent],
   );
 
-  const officeW = Math.min(14, w * 0.3);
+  const officeW = officeWidth(w);
   const officeX = -w / 2 + officeW / 2;
 
   return (
@@ -83,28 +83,33 @@ function Building({ layout, accent, sign }: { layout: Layout; accent: string; si
         <B key={i} p={[-w / 2 + officeW + 3 + i * 4, h - 1.6, 0.05]} s={[2.8, 0.9, 0.08]} m={glassMat} shadow={false} />
       ))}
 
-      {/* Personaldører på fasaden */}
-      <B p={[w * 0.12, 1.2, 0.06]} s={[1.2, 2.4, 0.1]} c={accent} />
-      <B p={[w * 0.32, 1.2, 0.06]} s={[1.2, 2.4, 0.1]} c={accent} />
-
-      {/* Lasteramper på høyre gavl */}
+      {/* Lasteramper på fasaden mot sørvest: port, tettelist og støtfangere */}
       {layout.docks.map((dock, i) => (
-        <group key={i} position={[w / 2, 0, dock.z]}>
-          {/* Portåpning og port */}
-          <B p={[0.25, 2.6, 0]} s={[0.5, 4.6, 4.1]} c="#3a4560" />
-          <B p={[0.42, 3.3, 0]} s={[0.12, 3.2, 3.4]} c={P.door} rough={0.5} />
-          {[0, 1, 2, 3, 4, 5].map((k) => (
-            <B key={k} p={[0.5, 1.9 + k * 0.52, 0]} s={[0.04, 0.05, 3.4]} c="#5a83e6" shadow={false} />
+        <group key={i} position={[dock.x, 0, 0]}>
+          <B p={[0, 2.5, 0.12]} s={[DOOR_W + 0.7, 4.8, 0.24]} c="#2c3346" />
+          <B p={[0, 2.75, 0.26]} s={[DOOR_W, 4.2, 0.06]} c={P.door} rough={0.5} />
+          {[0, 1, 2, 3, 4, 5, 6].map((k) => (
+            <B key={k} p={[0, 1.05 + k * 0.56, 0.3]} s={[DOOR_W, 0.05, 0.02]} c="#5a83e6" shadow={false} />
           ))}
-          {/* Rampe og støtfangere */}
-          <B p={[1.4, 0.6, 0]} s={[2.8, 1.2, 3.6]} c={P.steel} />
-          <B p={[2.85, 0.75, 1.3]} s={[0.25, 0.7, 0.35]} c="#2c3346" />
-          <B p={[2.85, 0.75, -1.3]} s={[0.25, 0.7, 0.35]} c="#2c3346" />
-          {/* Varsellys */}
-          <mesh position={[0.5, 5.2, 1.9]}>
-            <sphereGeometry args={[0.16, 12, 8]} />
-            <meshStandardMaterial color={i % 2 ? "#22c27a" : "#ff5a4f"} emissive={i % 2 ? "#22c27a" : "#ff5a4f"} emissiveIntensity={1.2} />
+          {/* Rampeplate og støtfangere */}
+          <B p={[0, 0.55, 0.45]} s={[DOOR_W - 0.4, 0.1, 0.7]} c={P.steel} />
+          <B p={[-1.25, 0.75, 0.55]} s={[0.35, 0.6, 0.5]} c="#1d2333" />
+          <B p={[1.25, 0.75, 0.55]} s={[0.35, 0.6, 0.5]} c="#1d2333" />
+          {/* Grønt lys: rampen er i bruk til lading */}
+          <mesh position={[-DOOR_W / 2 - 0.15, 5.2, 0.3]}>
+            <sphereGeometry args={[0.14, 12, 8]} />
+            <meshStandardMaterial color="#22c27a" emissive="#22c27a" emissiveIntensity={1.2} />
           </mesh>
+          <B p={[0, 5.35, 0.2]} s={[0.6, 0.35, 0.12]} c="#ffffff" shadow={false} />
+          {void i}
+        </group>
+      ))}
+
+      {/* Sidedører på høyre gavl, der gaffeltruckene går */}
+      {layout.sideDoors.map((sd, i) => (
+        <group key={i} position={[w / 2, 0, sd.z]}>
+          <B p={[0.12, 2, 0]} s={[0.24, 4, 3.4]} c="#2c3346" />
+          <B p={[0.26, 2, 0]} s={[0.06, 3.6, 3]} c={P.door} rough={0.5} />
         </group>
       ))}
 

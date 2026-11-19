@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { B, C } from "./parts";
 import { P } from "./palette";
-import { CHARGER_SIDE, type Layout } from "./layout";
+import { CHARGER_DX, type Layout } from "./layout";
 import { live } from "./live";
 
 /**
@@ -23,23 +23,35 @@ function Energy({
   energy: string;
   hasSolar: boolean;
 }) {
-  const { transformer: tr, battery: bat, bays, inverter, chargerX } = layout;
+  const { transformer: tr, battery: bat, docks, inverter, building: bd } = layout;
 
+  // Strømmen samles foran kontoret og går langs fasaden til laderne ved portene.
   const flows = useMemo(() => {
-    if (!bays.length) return [];
+    if (!docks.length) return [];
     const out: { color: string; pts: THREE.Vector3[] }[] = [];
     const v = (x: number, z: number) => new THREE.Vector3(x, 0.12, z);
-    const lastZ = bays[bays.length - 1].z + CHARGER_SIDE;
-    // Hovedkabel langs fasaden, så ned langs laderekken.
-    const trunk = (z: number, dx: number) => [v(chargerX + dx, z), v(chargerX + dx, lastZ)];
-    out.push({ color: accent, pts: [v(tr.x, tr.z), v(tr.x, 2.4), ...trunk(2.4, 1.1)] });
-    if (hasSolar) out.push({ color: energy, pts: [v(inverter.x, inverter.z + 0.3), v(inverter.x, 3.0), ...trunk(3.0, 1.45)] });
+    const firstX = docks[0].x;
+    const endX = docks[docks.length - 1].x + CHARGER_DX;
+    const left = -bd.w / 2 - 1;
+    const wall = (z: number, dx: number, zRun: number) => [
+      v(firstX - 3 + dx, zRun),
+      v(firstX - 3 + dx, z),
+      v(endX, z),
+    ];
+    out.push({
+      color: accent,
+      pts: [v(tr.x, tr.z), v(tr.x, 1), v(left, 1), v(left, 4.2), ...wall(0.45, 0, 4.2)],
+    });
     if (bat) {
-      const b0 = bat.slots[0];
-      out.push({ color: P.charge, pts: [v(b0.x + bat.len / 2 + 0.3, b0.z), v(b0.x + bat.len / 2 + 0.3, 3.6), ...trunk(3.6, 1.8)] });
+      const right = Math.max(...bat.slots.map((sl) => sl.x)) + bat.len / 2 + 0.3;
+      const z0 = bat.slots[0].z;
+      out.push({ color: P.charge, pts: [v(right, z0), ...wall(0.62, 0.4, z0)] });
+    }
+    if (hasSolar) {
+      out.push({ color: energy, pts: [v(inverter.x, inverter.z + 0.6), v(inverter.x, 0.79), v(firstX - 2.2, 0.79)] });
     }
     return out;
-  }, [tr.x, tr.z, bat, bays, inverter.x, inverter.z, chargerX, hasSolar, accent, energy]);
+  }, [tr.x, tr.z, bat, docks, inverter.x, inverter.z, bd.w, hasSolar, accent, energy]);
 
   return (
     <group>

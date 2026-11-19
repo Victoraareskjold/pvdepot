@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computeLayout, CHARGER_SIDE, type VehicleModel } from "./layout";
+import { computeLayout, CHARGER_DX, CHARGER_Z, type VehicleModel } from "./layout";
 import { buildRoutes, newSim, pose, step, type BaySim, type Pose } from "./sim";
 import { mulberry } from "./rand";
 
@@ -35,12 +35,13 @@ function run(model: VehicleModel, bays: number, seconds: number, dt: number, see
   const routes = buildRoutes(layout);
   const rnd = mulberry(seed);
   const list: BaySim[] = Array.from({ length: bays }, (_, i) => newSim(i, true, rnd, false));
-  const locks = { entry: -1, exit: -1 };
+  const locks = { yard: -1 };
   const poses: Pose[] = list.map(() => ({ visible: false, x: 0, z: 0, yaw: 0 }));
-  const chargers = layout.bays.map((b) => [layout.chargerX, b.z + CHARGER_SIDE] as const);
+  const chargers = layout.docks.map((d) => [d.x + CHARGER_DX, CHARGER_Z] as const);
 
   let minGap = Infinity;
   let minCharger = Infinity;
+  let minWall = Infinity;
   let departures = 0;
   let worst = "";
 
@@ -49,7 +50,7 @@ function run(model: VehicleModel, bays: number, seconds: number, dt: number, see
     step(list, routes, locks, dt, rnd);
     list.forEach((s, i) => {
       if (before[i] === "depart" && s.phase === "wait") departures++;
-      pose(s, routes[i], layout.bays[i].z, layout, poses[i]);
+      pose(s, routes[i], layout.docks[i].x, layout, poses[i]);
     });
     const circles = poses.map((p) => (p.visible ? bodyCircles(p, layout.truckLen) : []));
     for (let a = 0; a < bays; a++) {
@@ -63,11 +64,14 @@ function run(model: VehicleModel, bays: number, seconds: number, dt: number, see
             }
           }
       }
-      for (const ca of circles[a])
+      for (const ca of circles[a]) {
         for (const [x, z] of chargers) minCharger = Math.min(minCharger, Math.hypot(ca[0] - x, ca[1] - z) - HALF_W - 0.45);
+        // Fasaden står på z = 0 langs hele bygget.
+        if (Math.abs(ca[0]) < layout.building.w / 2) minWall = Math.min(minWall, ca[1] - HALF_W);
+      }
     }
   }
-  return { minGap, minCharger, departures, worst };
+  return { minGap, minCharger, minWall, departures, worst };
 }
 
 describe("trafikken på depotet", () => {
@@ -78,8 +82,9 @@ describe("trafikken på depotet", () => {
           const r = run(model, bays, 30 * 60, dt, 7 + bays);
           expect(r.minGap, r.worst).toBeGreaterThan(0.3);
           expect(r.minCharger).toBeGreaterThan(0.1);
-          // Minst én bil i minuttet per plass skal komme gjennom (ingen vranglås).
-          expect(r.departures).toBeGreaterThan(bays * 20);
+          expect(r.minWall).toBeGreaterThan(0.3);
+          // Bilene skal komme seg gjennom jevnlig (ingen vranglås).
+          expect(r.departures).toBeGreaterThan(bays * 6);
         }
       });
     }

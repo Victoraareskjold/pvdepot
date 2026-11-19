@@ -31,3 +31,11 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 - Ytelse: tegn mange like ting med `Instanced` (parts.tsx), ikke lag objekter i `useFrame`, og hold tunge komponenter i `memo`. `?debug=1` gir `window.__gl.info`.
 - Appen skal ikke laste sporingspixler. Sporing og samtykke ligger på nettsiden (Consentify).
 - 3D-scenen er pynt. Kalkylen og skjemaet må virke uten WebGL.
+
+## Runde 19.11.2026 (Smart Elektro: Ole Morten, Audun)
+
+- Lastebilene lader ved lasterampene på fasaden, som vender mot sørvest (nord er rett opp på skjermen, kompass i scenen). Bilene kjører langs veien, stopper forbi rampen og rygger inn; DC-laderen henger på veggen ved porten. Bare én bil i bevegelse på gården om gangen (`sim.ts`, testet i `sim.test.ts`).
+- Batteriene står foran kontoret, godt synlig. Standard batteri er 600 kWh.
+- Enova-støtten regnes per kW samtidig ladeeffekt med laststyring (ikke summen av laderne). Grensen fra de siste rundene er 4 200 kr/kW. Støttegraden velges automatisk som den høyeste som holder søknaden under grensen (5 % margin, maks 60 %); kunden kan overstyre. Sol og nettforsterkning er med i grunnlaget. «Nettilknytning kommer i tillegg» vises når nettkapasiteten er ukjent.
+- Forsiden: rolig topp (logo «Smart Elektro Lading», ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp. «Merpris for elektriske biler er ikke med» står rett under nøkkeltallene.
+- Logoen `public/brand/smartelektrolading.png` er laget fra Sol-logoen (solen byttet med et lyn, «SOL» med «LADING» i Oswald). Midlertidig til Smart Elektro har en offisiell.

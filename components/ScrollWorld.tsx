@@ -26,15 +26,32 @@ export default function ScrollWorld({
   input,
   result,
   theme,
+  panel,
 }: {
   input: PlannerInput;
   result: PlannerResult;
   theme: SiteTheme;
+  /** Sliderne og nøkkeltallene, ved siden av scenen (under på mobil) */
+  panel?: React.ReactNode;
 }) {
   const section = useRef<HTMLElement>(null);
   const [index, setIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [inset, setInset] = useState({ left: 0, top: 24, bottom: 150 });
+
+  // Panelet dekker venstre side på desktop; på mobil ligger det under scenen.
+  useEffect(() => {
+    const update = () =>
+      setInset(
+        window.innerWidth >= 900
+          ? { left: 440, top: 24, bottom: 140 }
+          : { left: 0, top: 16, bottom: 120 },
+      );
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   const stops = useMemo<Stop[]>(() => {
     const out: Stop[] = [
@@ -45,8 +62,8 @@ export default function ScrollWorld({
       },
       {
         shot: "fleet",
-        title: "DC-lader på hver plass",
-        text: `${result.chargePoints} × ${result.chargerKw} kW. Bilene kjører inn, kobler til og lader mens de står. Hver bil trenger omtrent ${int(result.dailyKwhPerVehicle)} kWh i døgnet.`,
+        title: "DC-lading på lasterampene",
+        text: `${result.chargePoints} × ${result.chargerKw} kW på veggen ved hver port. Bilene rygger inn og lader mens de står ved rampen. Hver bil trenger omtrent ${int(result.dailyKwhPerVehicle)} kWh i døgnet.`,
       },
     ];
     if (result.solarKwp > 0) {
@@ -85,7 +102,9 @@ export default function ScrollWorld({
       const span = rect.height - window.innerHeight;
       const p = span > 0 ? Math.min(1, Math.max(0, -rect.top / span)) : 0;
       setProgress(p);
-      setIndex(Math.min(stops.length - 1, Math.floor(p * stops.length * 0.999)));
+      setIndex(
+        Math.min(stops.length - 1, Math.floor(p * stops.length * 0.999)),
+      );
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
@@ -93,7 +112,9 @@ export default function ScrollWorld({
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
-    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { rootMargin: "200px 0px" });
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), {
+      rootMargin: "200px 0px",
+    });
     io.observe(el);
     return () => {
       window.removeEventListener("scroll", onScroll);
@@ -104,13 +125,28 @@ export default function ScrollWorld({
   }, [stops.length]);
 
   const stop = stops[index];
+
+  // Hopp til det som kommer etter seksjonen.
+  const skip = () => {
+    const el = section.current;
+    if (!el) return;
+    window.scrollTo({
+      top: el.offsetTop + el.offsetHeight,
+      behavior: "smooth",
+    });
+  };
   const labels = useMemo(
     () => ({
       chargers: `${result.chargePoints} × ${result.chargerKw} kW`,
       solar: result.solarKwp > 0 ? `${int(result.solarKwp)} kWp` : undefined,
-      battery: input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
+      battery:
+        input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
       control:
-        input.batteryKwh > 0 ? "Laststyring og frekvensmarked" : result.solarKwp > 0 ? "Sol og laststyring" : undefined,
+        input.batteryKwh > 0
+          ? "Laststyring og frekvensmarked"
+          : result.solarKwp > 0
+            ? "Sol og laststyring"
+            : undefined,
       grid:
         result.gridDeficitKw > 0
           ? `+${int(result.gridDeficitKw)} kW`
@@ -118,15 +154,23 @@ export default function ScrollWorld({
             ? `${int(input.gridSpareKw)} kW ledig`
             : undefined,
     }),
-    [result.chargePoints, result.chargerKw, result.solarKwp, result.gridDeficitKw, input.batteryKwh, input.gridSpareKw],
+    [
+      result.chargePoints,
+      result.chargerKw,
+      result.solarKwp,
+      result.gridDeficitKw,
+      input.batteryKwh,
+      input.gridSpareKw,
+    ],
   );
 
   return (
     <section
       ref={section}
       className="scrolly"
-      style={{ height: `${stops.length * 90 + 60}vh` }}
-      aria-label="Illustrasjon av depotet"
+      id="depot"
+      style={{ ["--stops" as string]: stops.length }}
+      aria-label="Depotet deres"
     >
       <div className="scrolly-sticky">
         <div className="scrolly-frame">
@@ -144,21 +188,39 @@ export default function ScrollWorld({
             energy={theme.energy}
             sign="DITT DEPOT"
             labels={labels}
-            inset={{ left: 0, top: 24, bottom: 150 }}
+            inset={inset}
           />
           <div className="scrolly-caption" aria-live="polite">
-            <ol className="scrolly-steps" aria-hidden>
-              {stops.map((s, i) => (
-                <li key={s.shot} className={i === index ? "is-current" : i < index ? "is-done" : ""} />
-              ))}
-            </ol>
+            <div className="scrolly-head">
+              <ol className="scrolly-steps" aria-hidden>
+                {stops.map((s, i) => (
+                  <li
+                    key={s.shot}
+                    className={
+                      i === index ? "is-current" : i < index ? "is-done" : ""
+                    }
+                  />
+                ))}
+              </ol>
+              <span className="scrolly-count">
+                {index + 1} av {stops.length}
+              </span>
+              <button type="button" className="scrolly-skip" onClick={skip}>
+                Hopp videre
+              </button>
+            </div>
             <h2 key={stop.title}>{stop.title}</h2>
             <p key={stop.text}>{stop.text}</p>
           </div>
           <LivePanel chargerKw={result.chargerKw} total={result.chargePoints} />
-          <div className="scrolly-progress" style={{ transform: `scaleX(${progress})` }} aria-hidden />
+          <div
+            className="scrolly-progress"
+            style={{ transform: `scaleX(${progress})` }}
+            aria-hidden
+          />
         </div>
       </div>
+      {panel && <div className="tuner">{panel}</div>}
     </section>
   );
 }
