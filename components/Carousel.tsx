@@ -165,7 +165,7 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
       >
         {slides.map((s, i) => (
           <figure
-            key={s.title}
+            key={s.title + i}
             className={`slide${i === active ? " is-active" : ""}`}
             aria-roledescription="bilde"
             aria-label={`${i + 1} av ${slides.length}: ${s.title}`}
@@ -209,7 +209,7 @@ export default function Carousel({ slides = SLIDES }: { slides?: Slide[] }) {
         <div className="carousel-dots">
           {slides.map((s, i) => (
             <button
-              key={s.title}
+              key={s.title + i}
               type="button"
               className={i === active ? "is-current" : ""}
               aria-label={`Vis bilde ${i + 1}: ${s.title}`}
