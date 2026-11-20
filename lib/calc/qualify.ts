@@ -1,131 +1,267 @@
 /**
  * Støttesjekk mot Enovas «Bedriftslading for tunge kjøretøy».
  *
- * Krav (stopper søknaden) og styrker (gjør søknaden bedre) er skilt.
- * Kildene står ved hvert punkt. Kravet om at prosjektet ikke er startet
- * er det generelle kravet om insentiveffekt i statsstøtteregelverket, og
- * må bekreftes i vilkårs-PDF-en for runden.
+ * Spørsmål, svar og tekster er bestemt av Asbjørn (19.11.2026). Hvert svar
+ * gir grønn, gul eller rød status. Noen svar viser et oppfølgingsspørsmål;
+ * da er det oppfølgingen som avgjør statusen. Ingen svar er forhåndsvalgt.
+ * Grønt betyr at prosjektet kan være aktuelt for støtte, ikke at kunden er
+ * garantert støtte.
  */
 
-export type Answer = "ja" | "nei" | "usikker";
+export type Status = "green" | "yellow" | "red";
 
-export interface QualifyAnswers {
-  /** Registrert i Foretaksregisteret */
-  registered: Answer;
-  /** Ladingen skal stå på eget depot/anlegg (ikke offentlig hurtiglading) */
-  ownDepot: Answer;
-  /** Status for elektriske tunge kjøretøy */
-  vehiclePlan: "bestilt" | "planlagt" | "vurderer" | "nei";
-  /** Bestilt ladere eller startet arbeidet allerede */
-  started: Answer;
-  /** Skal bruke lokasjonen i minst fem år */
-  fiveYears: Answer;
-  /** Snakket med nettselskapet om kapasitet */
-  gridTalked: Answer;
+export interface Option {
+  value: string;
+  label: string;
+  /** Status når svaret er valgt. Utelatt når svaret viser et oppfølgingsspørsmål. */
+  status?: Status;
+  /** Forklaring i resultatboksen (gule og røde svar) */
+  note?: string;
+  /** Svaret viser oppfølgingsspørsmålet */
+  followUp?: boolean;
 }
 
-export const DEFAULT_ANSWERS: QualifyAnswers = {
-  registered: "ja",
-  ownDepot: "ja",
-  vehiclePlan: "planlagt",
-  started: "nei",
-  fiveYears: "ja",
-  gridTalked: "usikker",
-};
+export interface Question {
+  id: string;
+  text: string;
+  help?: string;
+  options: Option[];
+  followUp?: Omit<Question, "followUp">;
+}
 
-export type Verdict = "kvalifiserer" | "avklar" | "kvalifiserer-ikke";
+export const QUESTIONS: Question[] = [
+  {
+    id: "registered",
+    text: "Er bedriften registrert i Enhetsregisteret?",
+    options: [
+      { value: "ja", label: "Ja", status: "green" },
+      { value: "nei", label: "Nei", status: "red", note: "Bedriften må være registrert i Enhetsregisteret for å kunne søke." },
+      { value: "usikker", label: "Usikker", status: "yellow", note: "Vi må sjekke om bedriften er registrert i Enhetsregisteret." },
+    ],
+  },
+  {
+    id: "users",
+    text: "Hvem skal hovedsakelig bruke laderne?",
+    options: [
+      { value: "egne", label: "Egne kjøretøy", status: "green" },
+      { value: "andre", label: "Andre bedrifters kjøretøy", followUp: true },
+      { value: "begge", label: "Både egne og andre bedrifters kjøretøy", followUp: true },
+      { value: "uavklart", label: "Ikke avklart", status: "yellow", note: "Vi må avklare hvem ladeanlegget skal etableres for." },
+    ],
+    followUp: {
+      id: "intent",
+      text: "Har dere en intensjonsavtale med de andre bedriftene som anlegget primært skal etableres for?",
+      options: [
+        { value: "ja", label: "Ja", status: "green" },
+        { value: "ikke-enna", label: "Ikke ennå", status: "yellow", note: "Intensjonsavtale må være på plass før søknaden sendes." },
+        {
+          value: "hjelp",
+          label: "Ønsker hjelp med dette",
+          status: "yellow",
+          note: "Vi hjelper dere med å avklare brukerne og nødvendig intensjonsavtale.",
+        },
+      ],
+    },
+  },
+  {
+    id: "vehicles",
+    text: "Har dere eller bedriftene som skal lade, elektriske lastebiler eller busser over 4,25 tonn?",
+    options: [
+      { value: "i-bruk", label: "Ja, allerede i bruk", status: "green" },
+      { value: "bestilt", label: "Bestilt", followUp: true },
+      { value: "planlegger", label: "Planlegger kjøp", followUp: true },
+      {
+        value: "ingen",
+        label: "Ingen konkrete planer",
+        status: "red",
+        note: "Det må være et kjent ladebehov og konkrete planer om elektriske tunge kjøretøy hos bedriftene som skal bruke anlegget.",
+      },
+    ],
+    followUp: {
+      id: "timing",
+      text: "Skal kjøretøyene tas i bruk kort tid etter at ladeanlegget åpner, eller tidligere?",
+      options: [
+        { value: "ja", label: "Ja", status: "green" },
+        { value: "nei", label: "Nei", status: "red", note: "Planen for kjøretøyene må samsvare med når ladeanlegget tas i bruk." },
+        { value: "usikker", label: "Usikker", status: "yellow", note: "Vi må avklare når kjøretøyene skal tas i bruk." },
+      ],
+    },
+  },
+  {
+    id: "started",
+    text: "Har dere allerede besluttet å gjennomføre investeringen, inngått bindende bestilling eller startet arbeidet?",
+    help: "Det er greit å ha innhentet tilbud og undersøkt mulighetene.",
+    options: [
+      { value: "nei", label: "Nei", status: "green" },
+      { value: "ja", label: "Ja", followUp: true },
+      {
+        value: "usikker",
+        label: "Usikker",
+        status: "yellow",
+        note: "Vi må avklare om prosjektet allerede er besluttet eller satt i gang.",
+      },
+    ],
+    followUp: {
+      id: "appliedBefore",
+      text: "Var søknaden om Enova-støtte sendt inn før dette skjedde?",
+      options: [
+        {
+          value: "ja",
+          label: "Ja",
+          status: "yellow",
+          note: "Dere har allerede søkt. Vi må se på eksisterende søknad og prosjektstatus.",
+        },
+        {
+          value: "nei",
+          label: "Nei",
+          status: "red",
+          note: "Søknaden må sendes før prosjektet er besluttet gjennomført, satt i gang eller dere har forpliktet dere til å gjennomføre det.",
+        },
+        {
+          value: "usikker",
+          label: "Usikker",
+          status: "yellow",
+          note: "Vi må avklare tidspunktet for søknad, beslutning og bestilling.",
+        },
+      ],
+    },
+  },
+  {
+    id: "fiveYears",
+    text: "Kan ladeanlegget stå og driftes på samme sted i minst fem år etter oppstart?",
+    help: "Området kan være eid eller leid. Bruk av området må være avklart.",
+    options: [
+      { value: "ja", label: "Ja, og bruk av området er avklart", status: "green" },
+      {
+        value: "avklares",
+        label: "Må avklares",
+        status: "yellow",
+        note: "Vi må avklare tilgang til området og drift i minst fem år.",
+      },
+      { value: "nei", label: "Nei", status: "red", note: "Ladeanlegget må driftes på omsøkt lokasjon i minst fem år." },
+    ],
+  },
+  {
+    id: "eighteenMonths",
+    text: "Kan anlegget være ferdig og i drift innen 18 måneder etter innvilget støtte?",
+    options: [
+      { value: "ja", label: "Ja", status: "green" },
+      { value: "avklares", label: "Må avklares", status: "yellow", note: "Vi må avklare fremdriften og forventet oppstart." },
+      {
+        value: "nei",
+        label: "Nei",
+        status: "red",
+        note: "Anlegget må være ferdig og satt i drift innen 18 måneder etter vedtak fra Enova.",
+      },
+    ],
+  },
+];
+
+/** Svar per spørsmåls-id (også oppfølgingene). Mangler = ikke besvart. */
+export type QualifyAnswers = Partial<Record<string, string>>;
+
+export const DEFAULT_ANSWERS: QualifyAnswers = {};
+
+/**
+ * Sett et svar. Bytter man hovedsvar til et som ikke viser oppfølgingen,
+ * nullstilles oppfølgingssvaret, så det ikke påvirker resultatet.
+ */
+export function setAnswer(answers: QualifyAnswers, id: string, value: string): QualifyAnswers {
+  const next = { ...answers, [id]: value };
+  const q = QUESTIONS.find((x) => x.id === id);
+  if (q?.followUp) {
+    const opt = q.options.find((o) => o.value === value);
+    if (!opt?.followUp) delete next[q.followUp.id];
+  }
+  return next;
+}
+
+/** Er oppfølgingen synlig for dette spørsmålet med disse svarene? */
+export function followUpVisible(q: Question, answers: QualifyAnswers): boolean {
+  if (!q.followUp) return false;
+  return !!q.options.find((o) => o.value === answers[q.id])?.followUp;
+}
+
+export type Verdict = "incomplete" | Status;
 
 export interface Finding {
-  kind: "stopp" | "avklar" | "styrke" | "svakhet";
+  status: "yellow" | "red";
   text: string;
 }
 
 export interface QualifyResult {
   verdict: Verdict;
-  /** 0–100, hvor klar søknaden er til innlevering */
-  readiness: number;
+  answered: number;
+  total: number;
   findings: Finding[];
-  /** Annet Enova-program som passer bedre, hvis noe */
-  redirect?: { label: string; href: string };
 }
 
-const ENOVA = "https://enova.no/nb/bedrift/landtransport/stottetilbud-innen-landtransport";
+export function qualify(answers: QualifyAnswers): QualifyResult {
+  let answered = 0;
+  let red = false;
+  let yellow = false;
+  const reds: Finding[] = [];
+  const yellows: Finding[] = [];
 
-export function qualify(a: QualifyAnswers): QualifyResult {
-  const findings: Finding[] = [];
-  let redirect: QualifyResult["redirect"];
-
-  if (a.registered === "nei") {
-    findings.push({ kind: "stopp", text: "Søkeren må være registrert i Foretaksregisteret." });
-  } else if (a.registered === "usikker") {
-    findings.push({ kind: "avklar", text: "Sjekk at selskapet som skal eie laderne, står i Foretaksregisteret." });
+  for (const q of QUESTIONS) {
+    const main = q.options.find((o) => o.value === answers[q.id]);
+    if (!main) continue;
+    let decisive: Option | undefined = main;
+    if (main.followUp && q.followUp) {
+      decisive = q.followUp.options.find((o) => o.value === answers[q.followUp!.id]);
+      if (!decisive) continue; // Oppfølgingen mangler svar: spørsmålet er ikke besvart.
+    }
+    answered++;
+    if (decisive.status === "red") {
+      red = true;
+      if (decisive.note) reds.push({ status: "red", text: decisive.note });
+    } else if (decisive.status === "yellow") {
+      yellow = true;
+      if (decisive.note) yellows.push({ status: "yellow", text: decisive.note });
+    }
   }
 
-  if (a.ownDepot === "nei") {
-    findings.push({
-      kind: "stopp",
-      text: "Programmet gjelder lading på eget depot eller anlegg. Offentlig lading langs veien har et eget program.",
-    });
-    redirect = { label: "Underveislading for tunge kjøretøy", href: `${ENOVA}/underveislading-for-tunge-kjoretoy` };
-  } else if (a.ownDepot === "usikker") {
-    findings.push({
-      kind: "avklar",
-      text: "Dere trenger ikke eie tomten, men selskapet som søker, må eie laderne og føre dem i balansen.",
-    });
+  const total = QUESTIONS.length;
+  const verdict: Verdict = answered < total ? "incomplete" : red ? "red" : yellow ? "yellow" : "green";
+  // Røde punkter først.
+  return { verdict, answered, total, findings: [...reds, ...yellows] };
+}
+
+export const VERDICT_TEXT: Record<Verdict, { title: string; body: string }> = {
+  incomplete: {
+    title: "Svar på spørsmålene for å få en foreløpig vurdering",
+    body: "",
+  },
+  green: {
+    title: "Prosjektet kan være aktuelt for støtte",
+    body: "Svarene deres passer med kravene i denne første sjekken. Vi hjelper dere med å vurdere prosjektet og forberede søknaden.",
+  },
+  yellow: {
+    title: "Vi må avklare noen punkter",
+    body: "Prosjektet kan være aktuelt, men vi trenger noen avklaringer først.",
+  },
+  red: {
+    title: "Prosjektet oppfyller ikke alle kravene nå",
+    body: "Ut fra svarene deres er det noen krav som ikke er oppfylt slik prosjektet er planlagt.",
+  },
+};
+
+export const CHECK_DISCLAIMER =
+  "Dette er en foreløpig sjekk av utvalgte krav. Vi må også vurdere teknisk løsning, ladebehov og øvrige vilkår. Enova avgjør søknaden, og støtten tildeles gjennom konkurranse.";
+
+/** Knappeteksten etter resultatet. */
+export const ctaFor = (v: Verdict) => (v === "red" ? "Få en vurdering av prosjektet" : "Få hjelp med søknaden");
+
+/** Svarene som tekst, til henvendelsen. Bare synlige oppfølginger tas med. */
+export function describeAnswers(answers: QualifyAnswers): string[] {
+  const lines: string[] = [];
+  for (const q of QUESTIONS) {
+    const main = q.options.find((o) => o.value === answers[q.id]);
+    lines.push(`${q.text} ${main ? main.label : "(ikke besvart)"}`);
+    if (q.followUp && main?.followUp) {
+      const f = q.followUp.options.find((o) => o.value === answers[q.followUp!.id]);
+      lines.push(`  ${q.followUp.text} ${f ? f.label : "(ikke besvart)"}`);
+    }
   }
-
-  if (a.started === "ja") {
-    findings.push({
-      kind: "stopp",
-      text: "Prosjektet kan normalt ikke være startet eller laderne bestilt før søknaden er sendt.",
-    });
-  } else if (a.started === "usikker") {
-    findings.push({
-      kind: "avklar",
-      text: "Vent med å bestille ladere eller signere kontrakt til søknaden er sendt.",
-    });
-  }
-
-  if (a.vehiclePlan === "nei") {
-    findings.push({
-      kind: "stopp",
-      text: "Enova forventer at hovedbrukeren planlegger å kjøpe elektriske tunge kjøretøy som tas i bruk kort tid etter at laderen åpner.",
-    });
-  } else if (a.vehiclePlan === "vurderer") {
-    findings.push({ kind: "svakhet", text: "En konkret plan for innkjøp av kjøretøy gjør søknaden sterkere." });
-  } else if (a.vehiclePlan === "bestilt") {
-    findings.push({ kind: "styrke", text: "Bestilte kjøretøy viser at laderne blir tatt i bruk." });
-  } else {
-    findings.push({ kind: "styrke", text: "Planlagt innkjøp av elektriske kjøretøy passer programmet." });
-  }
-
-  if (a.fiveYears === "nei") {
-    findings.push({
-      kind: "stopp",
-      text: "Laderne må driftes på samme sted i fem år etter støtten.",
-    });
-  } else if (a.fiveYears === "usikker") {
-    findings.push({ kind: "avklar", text: "Laderne må driftes på samme sted i fem år. Sjekk leieavtalen." });
-  }
-
-  if (a.gridTalked === "ja") {
-    findings.push({ kind: "styrke", text: "Avklart nettkapasitet gir et sikrere kostnadsgrunnlag." });
-  } else {
-    findings.push({
-      kind: "svakhet",
-      text: "Snakk med nettselskapet tidlig. Svar om kapasitet kan ta flere uker.",
-    });
-  }
-
-  const stops = findings.filter((f) => f.kind === "stopp").length;
-  const clarify = findings.filter((f) => f.kind === "avklar").length;
-  const verdict: Verdict = stops > 0 ? "kvalifiserer-ikke" : clarify > 0 ? "avklar" : "kvalifiserer";
-
-  let readiness = 100;
-  readiness -= stops * 40 + clarify * 15;
-  readiness -= { bestilt: 0, planlagt: 5, vurderer: 20, nei: 30 }[a.vehiclePlan];
-  readiness -= a.gridTalked === "ja" ? 0 : 15;
-  readiness = Math.max(5, Math.min(100, readiness));
-
-  return { verdict, readiness, findings, redirect };
+  return lines;
 }

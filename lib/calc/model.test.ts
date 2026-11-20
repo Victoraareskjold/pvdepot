@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { calculate, DEFAULT_INPUT, pickChargerKw } from "./model";
-import { qualify, DEFAULT_ANSWERS } from "./qualify";
 import { nextDeadline } from "./deadlines";
 import { ASSUMPTIONS } from "./assumptions";
 
@@ -121,28 +120,6 @@ describe("nøkkeltall", () => {
     const r = calculate(DEFAULT_INPUT);
     expect(r.netSavingPeriod).toBeCloseTo(r.annual.totalSaving * r.periodYears - r.netInvestment, 0);
     expect(r.annualReturn!).toBeCloseTo(1 / r.paybackYears!, 6);
-  });
-});
-
-describe("støttesjekk", () => {
-  test("standardsvar: må avklare nett, men ingen stopp", () => {
-    const q = qualify(DEFAULT_ANSWERS);
-    expect(q.verdict).toBe("kvalifiserer");
-    expect(q.findings.some((f) => f.kind === "stopp")).toBe(false);
-  });
-
-  test("offentlig lading sendes til Underveislading", () => {
-    const q = qualify({ ...DEFAULT_ANSWERS, ownDepot: "nei" });
-    expect(q.verdict).toBe("kvalifiserer-ikke");
-    expect(q.redirect?.label).toContain("Underveislading");
-  });
-
-  test("startet prosjekt stopper", () => {
-    expect(qualify({ ...DEFAULT_ANSWERS, started: "ja" }).verdict).toBe("kvalifiserer-ikke");
-  });
-
-  test("usikkerhet gir avklar", () => {
-    expect(qualify({ ...DEFAULT_ANSWERS, fiveYears: "usikker" }).verdict).toBe("avklar");
   });
 });
 

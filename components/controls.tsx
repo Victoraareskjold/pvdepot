@@ -58,17 +58,21 @@ export function Choice<T extends string>({
   options,
   onChange,
   columns,
+  help,
 }: {
   label: string;
-  value: T;
+  /** undefined = ikke besvart */
+  value: T | undefined;
   options: { value: T; label: string; hint?: string }[];
   onChange: (v: T) => void;
   columns?: number;
+  help?: ReactNode;
 }) {
   const name = useId();
   return (
     <fieldset className="field choice" style={columns ? { ["--cols" as string]: columns } : undefined}>
       <legend>{label}</legend>
+      {help && <p className="field-hint choice-help">{help}</p>}
       <div className="choice-options">
         {options.map((o) => (
           <label key={o.value} className={`choice-option${o.value === value ? " is-selected" : ""}`}>

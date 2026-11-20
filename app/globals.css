@@ -1833,3 +1833,83 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 8px;
   }
 }
+
+/* ---------- Støttesjekk 19.11: grønn, gul, rød ---------- */
+
+.verdict-green {
+  border-top-color: var(--charge);
+}
+
+.verdict-yellow {
+  border-top-color: var(--energy);
+}
+
+.verdict-red {
+  border-top-color: var(--stop);
+}
+
+.verdict-incomplete {
+  border-top-color: var(--line);
+}
+
+.verdict-incomplete .verdict-title {
+  font-size: 19px;
+  color: var(--ink-2);
+}
+
+.check-count {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.finding-red {
+  color: var(--stop);
+}
+
+.finding-red::before {
+  content: "✕";
+  color: var(--stop);
+}
+
+.finding-yellow::before {
+  content: "!";
+  color: var(--warn);
+}
+
+.verdict-cta {
+  margin-top: 18px;
+  width: 100%;
+}
+
+.check-disclaimer {
+  margin-top: 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.check-q {
+  display: grid;
+  gap: 10px;
+}
+
+.check-followup {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: caption-in 0.3s ease-out both;
+}
+
+.choice-help {
+  margin: -2px 0 8px;
+}
+
+@media (min-width: 900px) {
+  /* Resultatet følger med mens man svarer. */
+  .apply-grid > .verdict {
+    position: sticky;
+    top: 20px;
+  }
+}

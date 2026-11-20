@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
-import { qualify, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
+import { qualify, setAnswer, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
 import { nextDeadline, formatDeadline } from "@/lib/calc/deadlines";
 import { VEHICLE_TYPES } from "@/lib/calc/assumptions";
 import { int } from "@/lib/format";
@@ -33,8 +33,8 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
 
   const set = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) =>
     setInput((prev) => ({ ...prev, [key]: value }));
-  const answer = <K extends keyof QualifyAnswers>(key: K, value: QualifyAnswers[K]) =>
-    setAnswers((prev) => ({ ...prev, [key]: value }));
+  // Bytter man hovedsvar, nullstilles oppfølgingen som ikke lenger gjelder.
+  const answer = (id: string, value: string) => setAnswers((prev) => setAnswer(prev, id, value));
 
   useEffect(() => setDeadline(nextDeadline()), []);
 
@@ -173,12 +173,13 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           />
         </p>
         <h1>
-          <span>Elektriske lastebiler.</span>
+          <span>Lading for elektriske lastebiler.</span>
           <span>Enova betaler inntil 60 %.</span>
         </h1>
         <p className="hook-lede">
-          Smart Elektro leverer komplette ladeløsninger for elektriske lastebiler, anleggsmaskiner og andre tunge
-          kjøretøy, fra første analyse til ferdig anlegg og service.
+          Har dere elektriske lastebiler innom, eller planer om det? Vi hjelper dere med ladeløsninger og søknad om
+          Enova-støtte. Smart Elektro leverer komplette løsninger. Fra første analyse til ferdig anlegg og videre
+          service. Solceller og batterilagring kan også inngå i både løsningen og søknaden.
         </p>
         <div className="hook-actions" id="hook-cta">
           <button type="button" className="btn btn-energy" onClick={() => go("vurdering")}>
@@ -244,8 +245,7 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           </button>
           {deadline && (
             <p>
-              {deadline.daysLeft} dager til fristen {formatDeadline(deadline.date)}. Vurderingen er gratis og
-              uforpliktende.
+              {deadline.daysLeft} dager til fristen {formatDeadline(deadline.date)}.
             </p>
           )}
         </div>
@@ -262,13 +262,14 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
       <section className="wrap apply" id="vurdering" aria-labelledby="apply-title">
         <h2 id="apply-title">Få hjelp med Enova-søknaden</h2>
         <p className="sec-lede">
-          Svar på seks spørsmål mot Enovas krav og send inn. Vi går gjennom tallene og søknaden med dere.
+          Svar på seks spørsmål mot utvalgte krav fra Enova, og send inn kontaktinformasjonen. Det kan dere gjøre
+          uansett resultat.
         </p>
         <div className="apply-grid">
           <div className="card step-body">
-            <CheckStep answers={answers} answer={answer} />
+            <CheckStep answers={answers} onAnswer={answer} />
           </div>
-          <Check check={check} />
+          <Check check={check} onCta={() => go("kontakt")} />
         </div>
         <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
         <p className="disclaimer">

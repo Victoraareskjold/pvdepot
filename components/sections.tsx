@@ -2,7 +2,15 @@
 
 import { VEHICLE_TYPES, ASSUMPTIONS } from "@/lib/calc/assumptions";
 import type { PlannerInput, PlannerResult } from "@/lib/calc/model";
-import type { QualifyAnswers, QualifyResult } from "@/lib/calc/qualify";
+import {
+  CHECK_DISCLAIMER,
+  ctaFor,
+  followUpVisible,
+  QUESTIONS,
+  VERDICT_TEXT,
+  type QualifyAnswers,
+  type QualifyResult,
+} from "@/lib/calc/qualify";
 import { int, kr, pct, dec } from "@/lib/format";
 import { Slider, Choice } from "./controls";
 
@@ -171,62 +179,47 @@ export function PowerStep({ input, result, set }: { input: PlannerInput; result:
 
 export function CheckStep({
   answers,
-  answer,
+  onAnswer,
 }: {
   answers: QualifyAnswers;
-  answer: <K extends keyof QualifyAnswers>(key: K, value: QualifyAnswers[K]) => void;
+  onAnswer: (id: string, value: string) => void;
 }) {
   return (
     <>
-      <Choice
-        label="Er bedriften registrert i Foretaksregisteret?"
-        value={answers.registered}
-        options={[...ANSWER_OPTIONS]}
-        columns={3}
-        onChange={(v) => answer("registered", v)}
-      />
-      <Choice
-        label="Skal laderne stå på eget depot eller anlegg?"
-        value={answers.ownDepot}
-        options={[...ANSWER_OPTIONS]}
-        columns={3}
-        onChange={(v) => answer("ownDepot", v)}
-      />
-      <Choice
-        label="Hvor langt har dere kommet med elektriske kjøretøy?"
-        value={answers.vehiclePlan}
-        columns={2}
-        options={[
-          { value: "bestilt", label: "Bestilt" },
-          { value: "planlagt", label: "Planlagt kjøp" },
-          { value: "vurderer", label: "Vurderer" },
-          { value: "nei", label: "Ingen planer" },
-        ]}
-        onChange={(v) => answer("vehiclePlan", v)}
-      />
-      <Choice
-        label="Har dere allerede bestilt ladere eller startet arbeidet?"
-        value={answers.started}
-        options={[...ANSWER_OPTIONS]}
-        columns={3}
-        onChange={(v) => answer("started", v)}
-      />
-      <Choice
-        label="Skal dere bruke lokasjonen i minst fem år?"
-        value={answers.fiveYears}
-        options={[...ANSWER_OPTIONS]}
-        columns={3}
-        onChange={(v) => answer("fiveYears", v)}
-      />
-      <Choice
-        label="Har dere snakket med nettselskapet om kapasitet?"
-        value={answers.gridTalked}
-        options={[...ANSWER_OPTIONS]}
-        columns={3}
-        onChange={(v) => answer("gridTalked", v)}
-      />
+      {QUESTIONS.map((q, i) => (
+        <div key={q.id} className="check-q">
+          <Choice
+            label={`${i + 1}. ${q.text}`}
+            help={q.help}
+            value={answers[q.id]}
+            options={q.options.map((o) => ({ value: o.value, label: o.label }))}
+            columns={choiceColumns(q.options)}
+            onChange={(v) => onAnswer(q.id, v)}
+          />
+          {q.followUp && followUpVisible(q, answers) && (
+            <div className="check-followup">
+              <Choice
+                label={q.followUp.text}
+                help={q.followUp.help}
+                value={answers[q.followUp.id]}
+                options={q.followUp.options.map((o) => ({ value: o.value, label: o.label }))}
+                columns={choiceColumns(q.followUp.options)}
+                onChange={(v) => onAnswer(q.followUp!.id, v)}
+              />
+            </div>
+          )}
+        </div>
+      ))}
     </>
   );
+}
+
+/** Korte svar side om side, lange svar under hverandre. */
+function choiceColumns(options: { label: string }[]) {
+  const longest = Math.max(...options.map((o) => o.label.length));
+  if (longest > 26) return 1;
+  if (longest > 12 || options.length > 3) return 2;
+  return options.length;
 }
 
 /* ---------------- Resultater ---------------- */
@@ -361,39 +354,31 @@ export function Operation({ result }: { result: PlannerResult }) {
   );
 }
 
-const VERDICT_TEXT: Record<QualifyResult["verdict"], { title: string; body: string }> = {
-  kvalifiserer: { title: "Ser ut til å kvalifisere", body: "Svarene passer programmet. Nå handler det om å søke sterkt nok." },
-  avklar: { title: "Kan kvalifisere", body: "Noen punkter må avklares før dere søker." },
-  "kvalifiserer-ikke": { title: "Kvalifiserer trolig ikke nå", body: "Minst ett krav er ikke oppfylt." },
-};
-
-export function Check({ check }: { check: QualifyResult }) {
+export function Check({ check, onCta }: { check: QualifyResult; onCta?: () => void }) {
   const v = VERDICT_TEXT[check.verdict];
   return (
-    <article className={`card verdict verdict-${check.verdict}`}>
+    <article className={`card verdict verdict-${check.verdict}`} aria-live="polite">
       <h3>Støttesjekk</h3>
       <p className="verdict-title">{v.title}</p>
-      <p>{v.body}</p>
-      <div className="meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={check.readiness} aria-label="Hvor klar søknaden er">
-        <span style={{ width: `${check.readiness}%` }} />
-      </div>
-      <p className="field-hint">Klar for søknad: {check.readiness} av 100</p>
-      <ul className="findings">
-        {check.findings.map((f, i) => (
-          <li key={i} className={`finding-${f.kind}`}>
-            {f.text}
-          </li>
-        ))}
-      </ul>
-      {check.redirect && (
-        <p>
-          Se heller{" "}
-          <a href={check.redirect.href} target="_blank" rel="noreferrer">
-            {check.redirect.label}
-          </a>
-          .
-        </p>
+      {v.body && <p>{v.body}</p>}
+      <p className="check-count">
+        {check.answered} av {check.total} spørsmål besvart
+      </p>
+      {check.findings.length > 0 && (
+        <ul className="findings">
+          {check.findings.map((f, i) => (
+            <li key={i} className={`finding-${f.status}`}>
+              {f.text}
+            </li>
+          ))}
+        </ul>
       )}
+      {onCta && (
+        <button type="button" className="btn btn-energy verdict-cta" onClick={onCta}>
+          {ctaFor(check.verdict)}
+        </button>
+      )}
+      <p className="field-hint check-disclaimer">{CHECK_DISCLAIMER}</p>
     </article>
   );
 }

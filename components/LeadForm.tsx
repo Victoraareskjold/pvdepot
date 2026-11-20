@@ -2,25 +2,25 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import type { PlannerInput, PlannerResult } from "@/lib/calc/model";
-import type { QualifyAnswers, QualifyResult } from "@/lib/calc/qualify";
-import { int, kr, pct } from "@/lib/format";
+import { ctaFor, describeAnswers, VERDICT_TEXT, type QualifyAnswers, type QualifyResult } from "@/lib/calc/qualify";
+import { describeSetup } from "@/lib/calc/setup";
 import { readTrackingParams, reportLead } from "@/lib/embed";
 import type { SiteTheme } from "@/lib/sites";
 
-/** Kort oppsummering som havner i leadets notat i dashboardet. */
+/**
+ * Teksten som følger henvendelsen til dashboardet: kundens oppsett i
+ * kalkylen (endret eller ikke) og støttesjekken. Lages i det skjemaet
+ * sendes, så senere endringer ikke påvirker det som er sendt inn.
+ */
 function summarize(input: PlannerInput, r: PlannerResult, answers: QualifyAnswers, q: QualifyResult): string {
   return [
     "— Bedriftslading (kalkulator) —",
-    `Kjøretøy: ${input.vehicles} × ${r.vehicle.label}, ${input.kmPerDay} km/dag, ${input.dwellHours} t på depot, ${input.operatingDays} dager/år`,
-    `Ladere: ${r.chargePoints} × ${r.chargerKw} kW (${int(r.availableKw)} kW tilgjengelig, ${int(r.managedPeakKw)} kW med laststyring)`,
-    `Tak: ${int(input.roofM2)} m², ${pct(input.solarCoverage)} sol = ${int(r.solarKwp)} kWp`,
-    `Nett: ${input.gridSpareKw === null ? "ukjent ledig effekt" : `${int(input.gridSpareKw)} kW ledig`}${r.gridDeficitKw > 0 ? `, mangler ${int(r.gridDeficitKw)} kW` : ""}`,
-    `Batteri: ${int(input.batteryKwh)} kWh`,
-    `Investering: ${kr(r.totalCost)}, støttegrunnlag ${kr(r.eligibleCost)}`,
-    `Enova: søker ${pct(r.supportRate)} = ${kr(r.support)} (${int(r.krPerKw)} kr/kW)`,
-    `Spart per år: ${kr(r.annual.totalSaving)}, ${int(r.annual.co2Tonnes)} t CO₂`,
-    `Støttesjekk: ${q.verdict}, klar ${q.readiness}/100`,
-    `Svar: foretaksreg. ${answers.registered}, eget depot ${answers.ownDepot}, kjøretøy ${answers.vehiclePlan}, startet ${answers.started}, 5 år ${answers.fiveYears}, nettselskap ${answers.gridTalked}`,
+    ...describeSetup(input, r),
+    "",
+    `Støttesjekk: ${VERDICT_TEXT[q.verdict].title} (${q.answered} av ${q.total} besvart)`,
+    ...q.findings.map((f) => `  ${f.status === "red" ? "Rødt" : "Gult"}: ${f.text}`),
+    "Svar:",
+    ...describeAnswers(answers).map((l) => `  ${l}`),
   ].join("\n");
 }
 
@@ -87,16 +87,12 @@ export default function LeadForm({
   }
 
   return (
-    <section className="lead" aria-labelledby="lead-title">
+    <section className="lead" id="kontakt" aria-labelledby="lead-title">
       <div className="lead-copy">
         <h2 id="lead-title">Send inn, så tar vi kontakt</h2>
         <p>
-          {theme.name} går gjennom tallene med dere, sjekker nettkapasiteten og setter opp et kostnadsgrunnlag dere kan
-          søke Enova med. Det er gratis og uforpliktende.
-        </p>
-        <p className="lead-sends">
-          Vi sender med beregningen: {result.chargePoints} ladere, {kr(result.totalCost)} i investering og{" "}
-          {kr(result.support)} i mulig støtte.
+          Vi tar en uforpliktende prat om behovene og planene deres. Sammen ser vi om løsningen kan være aktuell, og om
+          det er grunnlag for å gå videre med tilbud og Enova-søknad.
         </p>
       </div>
       <form ref={form} onSubmit={submit} className="lead-form" noValidate={false}>
@@ -136,7 +132,7 @@ export default function LeadForm({
           </p>
         )}
         <button type="submit" className="btn btn-primary wide" disabled={state === "sending"}>
-          {state === "sending" ? "Sender …" : "Få hjelp med søknaden"}
+          {state === "sending" ? "Sender …" : ctaFor(check.verdict)}
         </button>
         <p className="field-hint wide">
           Vi bruker opplysningene bare til å følge opp henvendelsen.

@@ -39,3 +39,9 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 - Enova-støtten regnes per kW samtidig ladeeffekt med laststyring (ikke summen av laderne). Grensen fra de siste rundene er 4 200 kr/kW. Støttegraden velges automatisk som den høyeste som holder søknaden under grensen (5 % margin, maks 60 %); kunden kan overstyre. Sol og nettforsterkning er med i grunnlaget. «Nettilknytning kommer i tillegg» vises når nettkapasiteten er ukjent.
 - Forsiden: rolig topp (logo «Smart Elektro Lading», ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp. «Merpris for elektriske biler er ikke med» står rett under nøkkeltallene.
 - Logoen `public/brand/smartelektrolading.png` er laget fra Sol-logoen (solen byttet med et lyn, «SOL» med «LADING» i Oswald). Midlertidig til Smart Elektro har en offisiell.
+
+## Runde 20.11.2026 (Asbjørn: «Endringer til Smart Elektro underside lading»)
+
+- Støttesjekken (`lib/calc/qualify.ts`): seks spørsmål med oppfølginger, grønn/gul/rød, ingen forhåndsvalg, «X av 6 spørsmål besvart». Rødt slår gult. Bytter man hovedsvar, nullstilles oppfølgingen (`setAnswer`). Knappen er «Få hjelp med søknaden» (grønn/gul) eller «Få en vurdering av prosjektet» (rød). Skjemaet kan sendes uansett resultat. Tekstene er ordrett fra Asbjørn, ikke skriv dem om.
+- Henvendelsen tar med kundens kalkyleoppsett (`lib/calc/setup.ts`): «Kunden har endret kalkylen: Ja/Nei», endrede felt som standard → kundens valg, hele oppsettet og det kalkylen regnet ut. Sammenligner med `DEFAULT_INPUT` i det skjemaet sendes, så en verdi som er satt tilbake teller ikke som endring. Nye felt i kalkylen må legges til i `SETUP_FIELDS`.
+- Ikke skriv «gratis» om samtalen eller vurderingen.
