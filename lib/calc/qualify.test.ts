@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { describeAnswers, qualify, QUESTIONS, setAnswer, type QualifyAnswers } from "./qualify";
 import { describeSetup, setupChanges } from "./setup";
-import { calculate, DEFAULT_INPUT } from "./model";
+import { calculate, DEFAULT_INPUT, withChargingShare } from "./model";
 
 const allGreen: QualifyAnswers = {
   registered: "ja",
@@ -89,32 +89,37 @@ describe("kundens oppsett i henvendelsen", () => {
     expect(text).toContain("Kunden har endret kalkylen: Nei");
     expect(text).toContain("Ingen endringer – standardverdiene i kalkylen er brukt.");
     expect(text).toContain("(standardverdier)");
+    expect(text).toMatch(/Investering: 7\s495\s620 kr/);
+    expect(text).toMatch(/Årlig netto før renter og skatt: 1\s238\s964 kr/);
+    expect(text).toContain("3,89 år");
   });
 
   test("endringer vises med standard og kundens verdi, med enheter", () => {
-    const input = { ...DEFAULT_INPUT, vehicles: 10, batteryKwh: 1200 };
+    const input = { ...DEFAULT_INPUT, salePrice: 3.5, batteryUnits: 4 };
     const text = describeSetup(input, calculate(input)).join("\n");
     expect(text).toContain("Kunden har endret kalkylen: Ja");
-    expect(text).toContain("Lastebiler som skal lade: 6 → 10");
-    expect(text).toMatch(/Batteri: 600 kWh → 1\s200 kWh/);
+    expect(text).toContain("Salgspris til andre: 4,5 kr/kWh → 3,5 kr/kWh");
+    expect(text).toContain("Batterienheter: 7 → 4");
     expect(text).toContain("(standard)");
-    expect(text).toContain("Ladere: 10 ×");
+    expect(text).toContain("må avklares");
   });
 
-  test("endret og satt tilbake regnes ikke som endring", () => {
-    const changed = { ...DEFAULT_INPUT, vehicles: 12 };
-    const back = { ...changed, vehicles: DEFAULT_INPUT.vehicles };
+  test("endret og satt tilbake regnes ikke som endring, også via fordelingsslideren", () => {
+    const changed = { ...DEFAULT_INPUT, chargers: 8 };
+    const back = { ...changed, chargers: DEFAULT_INPUT.chargers };
     expect(setupChanges(back)).toHaveLength(0);
+    const moved = withChargingShare(withChargingShare(DEFAULT_INPUT, 0.4), 0.625);
+    expect(setupChanges(moved)).toHaveLength(0);
   });
 
-  test("ukjent nett og automatisk støttegrad skrives i klartekst", () => {
-    const input = { ...DEFAULT_INPUT, gridSpareKw: 300, supportRate: 0.3 };
-    const ch = setupChanges(input);
-    expect(ch.find((c) => c.label.startsWith("Ledig effekt"))).toEqual({
-      label: "Ledig effekt i nettilknytningen",
-      from: "Vet ikke",
-      to: "300 kW",
-    });
-    expect(ch.find((c) => c.label === "Støttegrad")?.from).toBe("Automatisk");
+  test("støttevalget skrives i klartekst", () => {
+    const ch = setupChanges({ ...DEFAULT_INPUT, supportMode: "score" }).map((c) => ({
+      label: c.label,
+      from: c.from.replace(/\s/g, " "),
+      to: c.to.replace(/\s/g, " "),
+    }));
+    expect(ch).toEqual([
+      { label: "Støtte", from: "Søkebeløp 2 680 000 kr", to: "Fra ønsket score (4 000 kr/kW)" },
+    ]);
   });
 });

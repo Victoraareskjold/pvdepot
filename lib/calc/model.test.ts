@@ -1,136 +1,184 @@
 import { describe, expect, test } from "bun:test";
-import { calculate, DEFAULT_INPUT, pickChargerKw } from "./model";
-import { nextDeadline } from "./deadlines";
-import { ASSUMPTIONS } from "./assumptions";
+import {
+  calculate,
+  chargingShare,
+  DEFAULT_INPUT,
+  estimateDeliveredKwh,
+  withChargingShare,
+  type PlannerInput,
+} from "./model";
 
-describe("ladere", () => {
-  test("velger minste lader over behovet, alltid over 50 kW", () => {
-    expect(pickChargerKw(10)).toBe(60);
-    expect(pickChargerKw(61)).toBe(90);
-    expect(pickChargerKw(150)).toBe(150);
-    expect(pickChargerKw(9999)).toBe(360);
-    for (const s of ASSUMPTIONS.chargerSizesKw) expect(s).toBeGreaterThan(ASSUMPTIONS.enovaMinChargerKw);
+/** Kontrolltallene fra regnearket og kalkulatorbeskrivelsen (Asbjørn, 24.11.2026). */
+const line = (r: ReturnType<typeof calculate>, id: string) => r.lines.find((l) => l.id === id)!.value;
+const calc = (patch: Partial<PlannerInput> = {}) => calculate({ ...DEFAULT_INPUT, ...patch });
+
+describe("standardeksemplet", () => {
+  const r = calc();
+
+  test("utstyr: 6 × 120 kW, 189 kWp, 7 batterienheter", () => {
+    expect(r.standardPackage).toBe(true);
+    expect(r.nameplateKw).toBe(720);
+    expect(r.batteryKwh).toBe(1_827);
+    expect(r.batteryKw).toBe(910);
+    expect(r.availableKw).toBe(720);
+    expect(r.batteryAssistKw).toBeCloseTo(607.89, 1);
+    expect(r.energy.solarKwh).toBeCloseTo(162_933, 6);
   });
 
-  test("standardcase: 6 distribusjonsbiler, 220 km, 10 t", () => {
-    const r = calculate(DEFAULT_INPUT);
-    // 220 km * 1.0 / 0.92 = 239 kWh per døgn, 23.9 kW over 10 t
-    expect(r.dailyKwhPerVehicle).toBeCloseTo(239.13, 1);
-    expect(r.chargerKw).toBe(60);
-    expect(r.chargePoints).toBe(6);
-    expect(r.nameplateKw).toBe(360);
-    // Enova regner med effekten med laststyring: 6 × 23,9 kW, ikke 6 × 60 kW.
-    expect(r.availableKw).toBeCloseTo(6 * 23.913, 1);
-    // 6 * (120 000 + 60 * 2 800) = 1 728 000
-    expect(r.costs[0].cost).toBe(1_728_000);
-    // Automatisk støttegrad holder søknaden under grensen på 4 200 kr per kW.
-    expect(r.supportAuto).toBe(true);
-    expect(r.krPerKw).toBeLessThanOrEqual(4_200);
-    expect(r.competitive).toBe(true);
-    expect(r.krPerKw).toBeCloseTo(r.support / r.availableKw, 0);
-    expect(r.warnings.some((w) => w.id === "grid-unknown")).toBe(true);
+  test("investering og støtte", () => {
+    expect(r.investment).toBe(7_495_620);
+    expect(r.support).toBe(2_680_000);
+    expect(r.netInvestment).toBe(4_815_620);
+    expect(Math.round(r.krPerKw)).toBe(3_722);
   });
 
-  test("for kort ståtid gir varsel", () => {
-    const r = calculate({ ...DEFAULT_INPUT, vehicleType: "langtransport", kmPerDay: 700, dwellHours: 2 });
-    expect(r.chargerKw).toBe(360);
-    expect(r.warnings.some((w) => w.id === "dwell-too-short")).toBe(true);
+  test("årsregnestykket rad for rad", () => {
+    expect(line(r, "revenue")).toBeCloseTo(1_710_000, 4);
+    expect(line(r, "charging")).toBeCloseTo(-400_520, 4);
+    expect(line(r, "solarBuilding")).toBeCloseTo(81_572.40645, 4);
+    expect(line(r, "solarCharging")).toBeCloseTo(69_336.5454825, 4);
+    expect(line(r, "solarExport")).toBeCloseTo(4_887.99, 4);
+    expect(line(r, "batteryLoss")).toBeCloseTo(-10_013, 4);
+    expect(line(r, "power")).toBeCloseTo(-141_300, 4);
+    expect(line(r, "opex")).toBe(-75_000);
+    expect(r.annualNet).toBeCloseTo(1_238_963.9419325, 4);
+    expect(r.paybackYears!).toBeCloseTo(3.8868120669345188, 9);
+  });
+
+  test("energibalanse og effektledd", () => {
+    expect(r.energy.chargerAcKwh).toBeCloseTo(400_000, 6);
+    expect(r.energy.gridPurchaseKwh).toBeCloseTo(499_286.975, 3);
+    expect(r.energy.solarExportKwh).toBeCloseTo(8_146.65, 3);
+    const losses = r.energy.solarBatteryLossKwh + r.energy.gridBatteryLossKwh;
+    expect(losses).toBeCloseTo(14_073.325, 3);
+    expect(r.energy.gridPurchaseKwh + r.energy.solarKwh).toBeCloseTo(
+      240_000 + r.energy.chargerAcKwh + r.energy.solarExportKwh + losses,
+      6,
+    );
+    expect(r.power.beforeCost).toBe(141_300);
+    expect(r.power.unmanagedCost).toBe(612_300);
+    expect(r.power.managedCost).toBe(282_600);
+    expect(r.power.controlSaving).toBe(329_700);
+  });
+
+  test("gradvis oppstart og tiårstall", () => {
+    expect(r.rampUp.years[0]).toBeCloseTo(589_230.4419325, 4);
+    expect(r.rampUp.years[1]).toBeCloseTo(914_097.1919325, 4);
+    expect(r.rampUp.years[2]).toBeCloseTo(1_238_963.9419325, 4);
+    expect(r.rampUp.paybackYears!).toBeCloseTo(4.673437259980772, 9);
+    expect(Math.round(r.netAfterPeriod!)).toBe(7_574_019);
   });
 });
 
-describe("Enova", () => {
+describe("kontroller før publisering", () => {
+  test("fire batterienheter: 1 044 kWh, 520 kW og 636,5 kW DC", () => {
+    const r = calc({ batteryUnits: 4 });
+    expect(r.batteryKwh).toBe(1_044);
+    expect(r.batteryKw).toBe(520);
+    expect(r.availableKw).toBeCloseTo(636.5, 6);
+    expect(r.standardPackage).toBe(false);
+  });
+
+  test("50 % fakturert: 855 000 kr i salg, ca. 383 964 kr netto og 12,54 år", () => {
+    const r = calc({ billedShare: 0.5 });
+    expect(r.energy.billedKwh).toBe(190_000);
+    expect(r.energy.ownKwh).toBe(190_000);
+    expect(line(r, "revenue")).toBeCloseTo(855_000, 4);
+    expect(Math.round(r.annualNet)).toBe(383_964);
+    expect(r.paybackYears!.toFixed(2)).toBe("12.54");
+  });
+
+  test("0 % fakturert: ca. −471 036 kr og ingen tilbakebetaling", () => {
+    const r = calc({ billedShare: 0 });
+    expect(line(r, "revenue")).toBe(0);
+    expect(Math.round(r.annualNet)).toBe(-471_036);
+    expect(r.paybackYears).toBeNull();
+  });
+
+  test("bygg/lading 50/50: 320 000 + 320 000 kWh, 304 000 levert, 1 368 000 kr", () => {
+    expect(chargingShare(DEFAULT_INPUT)).toBeCloseTo(0.625, 12);
+    const input = withChargingShare(DEFAULT_INPUT, 0.5);
+    expect(input.buildingKwh).toBeCloseTo(320_000, 6);
+    expect(input.deliveredKwh / 0.95).toBeCloseTo(320_000, 6);
+    expect(input.deliveredKwh).toBeCloseTo(304_000, 6);
+    expect(line(calculate(input), "revenue")).toBeCloseTo(1_368_000, 4);
+  });
+
+  test("endepunktene på bygg/lading gir ingen negative mengder", () => {
+    for (const s of [0, 1]) {
+      const r = calculate(withChargingShare(DEFAULT_INPUT, s));
+      expect(Number.isFinite(r.annualNet)).toBe(true);
+      for (const v of Object.values(r.energy)) expect(v).toBeGreaterThanOrEqual(-1e-9);
+    }
+  });
+
+  test("ladepris 3,50 kr: 1 330 000 kr i salg, ca. 858 964 kr og 5,61 år", () => {
+    const r = calc({ salePrice: 3.5 });
+    expect(line(r, "revenue")).toBeCloseTo(1_330_000, 4);
+    expect(Math.round(r.annualNet)).toBe(858_964);
+    expect(r.paybackYears!.toFixed(2)).toBe("5.61");
+  });
+
+  test("ingen støtte: egen investering 7 495 620 kr og ca. 6,05 år", () => {
+    const r = calc({ supportMode: "none" });
+    expect(r.netInvestment).toBe(7_495_620);
+    expect(r.paybackYears!.toFixed(2)).toBe("6.05");
+  });
+
+  test("ønsket score 4 000 kr/kW gir 2 880 000 kr", () => {
+    const r = calc({ supportMode: "score" });
+    expect(r.support).toBe(2_880_000);
+    expect(r.netInvestment).toBe(4_615_620);
+  });
+
   test("støtten stopper på 3 mill. kr", () => {
-    const r = calculate({ ...DEFAULT_INPUT, vehicles: 30, vehicleType: "langtransport", dwellHours: 4 });
+    const r = calc({ supportMode: "amount", supportAmount: 5_000_000 });
     expect(r.support).toBe(3_000_000);
-    expect(r.supportCapped).toBe(true);
+    expect(r.supportLimitedBy).toBe("cap");
   });
 
-  test("lavere støttegrad gir lavere kr per kW", () => {
-    const full = calculate({ ...DEFAULT_INPUT, supportRate: 0.6 });
-    const lower = calculate({ ...DEFAULT_INPUT, supportRate: 0.2 });
-    expect(lower.krPerKw).toBeLessThan(full.krPerKw);
-  });
-
-  test("støttegrad over 60 % kuttes", () => {
-    const r = calculate({ ...DEFAULT_INPUT, supportRate: 0.9 });
-    expect(r.support).toBeCloseTo(r.eligibleCost * 0.6, 0);
-  });
-
-  test("sol og nettforsterkning er med i grunnlaget", () => {
-    const r = calculate({ ...DEFAULT_INPUT, roofM2: 5000, gridSpareKw: 50, batteryKwh: 0 });
-    const solar = r.costs.find((c) => c.id === "solar")!;
-    const grid = r.costs.find((c) => c.id === "grid")!;
-    expect(solar.cost).toBeGreaterThan(0);
-    expect(solar.eligible).toBe(solar.cost);
-    expect(grid.cost).toBeGreaterThan(0);
-    expect(grid.eligible).toBe(grid.cost);
-  });
-});
-
-describe("Auduns eksempel (19.11.2026)", () => {
-  test("14 biler, bare ladere: 35 % gir 1,4 mill. kr og ca. 4 200 kr/kW", () => {
-    const r = calculate({ ...DEFAULT_INPUT, vehicles: 14, roofM2: 0, batteryKwh: 0, supportRate: 0.35 });
-    expect(Math.round(r.availableKw)).toBe(335);
-    expect(r.support).toBeCloseTo(1_411_200, -3);
-  });
-  test("automatisk støttegrad holder seg under grensen også med sol", () => {
-    const r = calculate({ ...DEFAULT_INPUT, vehicles: 14 });
-    expect(r.krPerKw).toBeLessThan(4_200);
-    expect(r.supportRate).toBeLessThanOrEqual(0.6);
-  });
-});
-
-describe("nett og batteri", () => {
-  test("for lite nett gir forsterkning, batteri reduserer den", () => {
-    const base = { ...DEFAULT_INPUT, vehicles: 10, gridSpareKw: 100, batteryKwh: 0 };
-    const noBattery = calculate(base);
-    expect(noBattery.gridDeficitKw).toBeGreaterThan(0);
-    expect(noBattery.costs.find((c) => c.id === "grid")!.cost).toBeGreaterThan(0);
-
-    const withBattery = calculate({ ...base, batteryKwh: 400 });
-    expect(withBattery.batteryKw).toBe(200);
-    expect(withBattery.gridDeficitKw).toBeLessThan(noBattery.gridDeficitKw);
-    // Batteri som dekker manglende kapasitet, er med i grunnlaget
-    expect(withBattery.costs.find((c) => c.id === "battery")!.eligible).toBeGreaterThan(0);
-  });
-
-  test("batteri som ikke trengs, er ikke med i grunnlaget", () => {
-    const r = calculate({ ...DEFAULT_INPUT, gridSpareKw: 2000, batteryKwh: 200 });
-    expect(r.costs.find((c) => c.id === "battery")!.eligible).toBe(0);
-  });
-});
-
-describe("drift", () => {
-  test("el er billigere enn diesel med standardpriser", () => {
-    const r = calculate(DEFAULT_INPUT);
-    expect(r.annual.fuelSaving).toBeGreaterThan(0);
-    expect(r.annual.co2Tonnes).toBeGreaterThan(0);
-    expect(r.paybackYears).not.toBeNull();
-  });
-
-  test("ingen kjøretøy gir ingen ladere", () => {
-    const r = calculate({ ...DEFAULT_INPUT, vehicles: 0 });
-    expect(r.chargePoints).toBe(0);
+  test("tomme og null-verdier gir ingen NaN eller uendelig", () => {
+    const r = calc({
+      buildingKwh: NaN,
+      deliveredKwh: 0,
+      salePrice: 0,
+      solarKwp: 0,
+      batteryUnits: 0,
+      chargers: 0,
+      spotPrice: Number.NaN,
+    });
+    expect(Number.isFinite(r.annualNet)).toBe(true);
+    expect(r.paybackYears).toBeNull();
     expect(r.krPerKw).toBe(0);
+    expect(r.energy.solarKwh).toBe(0);
+    // Ingen lading: ingen ny effekttopp
+    expect(line(r, "power")).toBe(0);
   });
 });
 
-describe("nøkkeltall", () => {
-  test("spart over perioden og avkastning henger sammen med tilbakebetaling", () => {
-    const r = calculate(DEFAULT_INPUT);
-    expect(r.netSavingPeriod).toBeCloseTo(r.annual.totalSaving * r.periodYears - r.netInvestment, 0);
-    expect(r.annualReturn!).toBeCloseTo(1 / r.paybackYears!, 6);
+describe("utstyr", () => {
+  test("endret utstyr uten komponentpriser: investeringspris må avklares", () => {
+    const r = calc({ chargers: 8 });
+    expect(r.investment).toBeNull();
+    expect(r.netInvestment).toBeNull();
+    expect(r.paybackYears).toBeNull();
+    expect(Number.isFinite(r.annualNet)).toBe(true);
   });
-});
 
-describe("frister", () => {
-  test("neste frist etter 12.11.2026 er 3. februar 2027", () => {
-    const d = nextDeadline(new Date("2026-11-12T12:00:00+01:00"))!;
-    expect(d.date.toISOString()).toBe("2027-02-03T11:00:00.000Z");
-    expect(d.daysLeft).toBe(83);
+  test("sol skaleres med kWp, og null kWp gir null sol", () => {
+    expect(calc({ solarKwp: 94.5 }).energy.solarKwh).toBeCloseTo(162_933 / 2, 6);
+    const none = calc({ solarKwp: 0 });
+    expect(line(none, "solarBuilding") + line(none, "solarCharging") + line(none, "solarExport")).toBe(0);
   });
-  test("etter februar-fristen kommer juni", () => {
-    const d = nextDeadline(new Date("2027-02-03T12:30:00+01:00"))!;
-    expect(d.date.getUTCMonth()).toBe(5);
+
+  test("uten batteri er alle batteristrømmer null", () => {
+    const r = calc({ batteryUnits: 0 });
+    expect(r.energy.solarToBatteryKwh).toBe(0);
+    expect(r.energy.gridBatteryKwh).toBe(0);
+    expect(line(r, "batteryLoss")).toBe(0);
+  });
+
+  test("ladevolum fra kjøretøy: 6 biler × 220 km × 250 døgn × 1,0 kWh", () => {
+    expect(estimateDeliveredKwh(DEFAULT_INPUT)).toBe(330_000);
   });
 });

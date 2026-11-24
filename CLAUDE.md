@@ -35,9 +35,9 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 ## Runde 19.11.2026 (Smart Elektro: Ole Morten, Audun)
 
 - Lastebilene lader ved lasterampene på fasaden, som vender mot sørvest (nord er rett opp på skjermen, kompass i scenen). Bilene kjører langs veien, stopper forbi rampen og rygger inn; DC-laderen henger på veggen ved porten. Bare én bil i bevegelse på gården om gangen (`sim.ts`, testet i `sim.test.ts`).
-- Batteriene står foran kontoret, godt synlig. Standard batteri er 600 kWh.
-- Enova-støtten regnes per kW samtidig ladeeffekt med laststyring (ikke summen av laderne). Grensen fra de siste rundene er 4 200 kr/kW. Støttegraden velges automatisk som den høyeste som holder søknaden under grensen (5 % margin, maks 60 %); kunden kan overstyre. Sol og nettforsterkning er med i grunnlaget. «Nettilknytning kommer i tillegg» vises når nettkapasiteten er ukjent.
-- Forsiden: rolig topp (logo «Smart Elektro Lading», ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp. «Merpris for elektriske biler er ikke med» står rett under nøkkeltallene.
+- Batteriene står foran kontoret, godt synlig.
+- (Kalkylen fra denne runden er erstattet 24.11.2026, se under.)
+- Forsiden: rolig topp (logo «Smart Elektro Lading», ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp.
 - Logoen `public/brand/smartelektrolading.png` er laget fra Sol-logoen (solen byttet med et lyn, «SOL» med «LADING» i Oswald). Midlertidig til Smart Elektro har en offisiell.
 
 ## Runde 20.11.2026 (Asbjørn: «Endringer til Smart Elektro underside lading»)
@@ -45,3 +45,13 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 - Støttesjekken (`lib/calc/qualify.ts`): seks spørsmål med oppfølginger, grønn/gul/rød, ingen forhåndsvalg, «X av 6 spørsmål besvart». Rødt slår gult. Bytter man hovedsvar, nullstilles oppfølgingen (`setAnswer`). Knappen er «Få hjelp med søknaden» (grønn/gul) eller «Få en vurdering av prosjektet» (rød). Skjemaet kan sendes uansett resultat. Tekstene er ordrett fra Asbjørn, ikke skriv dem om.
 - Henvendelsen tar med kundens kalkyleoppsett (`lib/calc/setup.ts`): «Kunden har endret kalkylen: Ja/Nei», endrede felt som standard → kundens valg, hele oppsettet og det kalkylen regnet ut. Sammenligner med `DEFAULT_INPUT` i det skjemaet sendes, så en verdi som er satt tilbake teller ikke som endring. Nye felt i kalkylen må legges til i `SETUP_FIELDS`.
 - Ikke skriv «gratis» om samtalen eller vurderingen.
+
+## Runde 24.11.2026 (Asbjørn: «Merknader til Victor, runde 2»)
+
+- Overskrift og ingress sier «elektriske tunge kjøretøy».
+- Ny kalkyle (`lib/calc/model.ts`) etter regnearket «Lonnsomhet-bedriftslading-7-batterier.xlsx» og «Victor-ladekalkulator.md». Den sammenligner byggets strømregning før og etter: ladesalg, strøm til laderne, solverdi, batteritap, endring i effektledd og drift. Diesel og CO₂ er ute. Ett resultat forsyner depotet, resultatkortene, «Se hele regnestykket» og skjemaet.
+- Standardeksemplet: 6 × 120 kW DC, 189 kWp (162 933 kWh), 7 × 261 kWh/130 kW batteri, 7 495 620 kr, støtte 2 680 000 kr, 240 000 kWh bygg, 380 000 kWh levert til 4,50 kr. Gir 1 238 964 kr netto og 3,89 år. Kontrolltallene fra beskrivelsen ligger som tester i `model.test.ts`. Endrer du modellen, skal de fortsatt stemme.
+- Utstyr som avviker fra standardpakken har ingen bekreftet pris: `ASSUMPTIONS.componentPrices` er `null`, og siden viser «Investeringspris må avklares». Fyll inn kvalitetssikrede komponentpriser der, så prises avviket mot standardpakken.
+- Støtte: søkebeløp (standard 2 680 000), ønsket score (kr/kW × samtidig kW) eller ingen. Alltid høyst 3 mill. kr og 60 % av godkjente kostnader.
+- Søknadsfristene hentes fra Enova på serveren (`lib/deadlines-server.ts`, mellomlagret et døgn). Leseren (`parseEnovaDeadlines`) er testet mot eksempel-HTML, men ikke mot den ekte siden, fordi enova.no var sperret fra utviklingsmiljøet. Sjekk `/api/deadlines` etter utrulling: `status` skal være `ok`. Er den `fallback`, brukes listen fra 24.11.2026. Manuell korrigering med `ENOVA_DEADLINES`, varsling med `DEADLINES_ALERT_WEBHOOK`.
+- Ladeplasspanelet i scenen er merket «Illustrasjon».

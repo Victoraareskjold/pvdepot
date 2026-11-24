@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
+import { calculate, DEFAULT_INPUT, estimateDeliveredKwh, type PlannerInput } from "@/lib/calc/model";
 import { qualify, setAnswer, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
-import { nextDeadline, formatDeadline } from "@/lib/calc/deadlines";
+import type { DeadlineInfo } from "@/lib/calc/deadlines";
 import { VEHICLE_TYPES } from "@/lib/calc/assumptions";
 import { int } from "@/lib/format";
 import type { SiteTheme } from "@/lib/sites";
@@ -13,7 +13,8 @@ import KeyFigures from "./KeyFigures";
 import ScrollWorld from "./ScrollWorld";
 import Carousel from "./Carousel";
 import { Choice, Slider } from "./controls";
-import { Check, CheckStep, Investment, Operation } from "./sections";
+import { Assumptions, CalcControls, Check, CheckStep, Equipment, Investment, Operation, PowerAndEnergy } from "./sections";
+import { DeadlineText, useDeadline } from "./Deadline";
 
 /**
  * Siden, ovenfra og ned (Smart Elektro, 19.11.2026):
@@ -22,10 +23,9 @@ import { Check, CheckStep, Investment, Operation } from "./sections";
  * bildekarusell, støttesjekk og skjema. En svevende knapp holder
  * «Få hjelp med Enova-søknaden» synlig hele veien.
  */
-export default function Experience({ theme }: { theme: SiteTheme }) {
+export default function Experience({ theme, deadlines }: { theme: SiteTheme; deadlines: DeadlineInfo }) {
   const [input, setInput] = useState<PlannerInput>(DEFAULT_INPUT);
   const [answers, setAnswers] = useState<QualifyAnswers>(DEFAULT_ANSWERS);
-  const [deadline, setDeadline] = useState<ReturnType<typeof nextDeadline>>(null);
   const [details, setDetails] = useState(false);
 
   const result = useMemo(() => calculate(input), [input]);
@@ -36,108 +36,93 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
   // Bytter man hovedsvar, nullstilles oppfølgingen som ikke lenger gjelder.
   const answer = (id: string, value: string) => setAnswers((prev) => setAnswer(prev, id, value));
 
-  useEffect(() => setDeadline(nextDeadline()), []);
+  const deadline = useDeadline(deadlines);
+  const estimate = estimateDeliveredKwh(input);
 
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const panel = (
     <>
       <h2 className="tuner-title">Tilpass til depotet deres</h2>
-      <Choice
-        label="Type kjøretøy"
-        value={input.vehicleType}
-        onChange={(v) => set("vehicleType", v)}
-        columns={2}
-        options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label }))}
-      />
       <Slider
-        label="Lastebiler som skal lade"
-        value={input.vehicles}
-        min={1}
-        max={30}
-        step={1}
-        onChange={(v) => set("vehicles", v)}
-      />
-      <Slider
-        label="Kjørelengde per bil"
-        value={input.kmPerDay}
-        min={50}
-        max={600}
-        step={10}
-        unit="km per dag"
-        onChange={(v) => set("kmPerDay", v)}
-      />
-      <Slider
-        label="Takflate"
-        value={input.roofM2}
+        label="Lading levert til kjøretøy"
+        value={input.deliveredKwh}
         min={0}
-        max={12000}
-        step={100}
-        unit="m²"
+        max={1_500_000}
+        step={10_000}
+        unit="kWh per år"
         format={int}
-        onChange={(v) => set("roofM2", v)}
+        onChange={(v) => set("deliveredKwh", v)}
       />
       <Slider
-        label="Batteri"
-        value={input.batteryKwh}
+        label="Salgspris til andre"
+        value={input.salePrice}
         min={0}
-        max={3000}
-        step={50}
+        max={8}
+        step={0.05}
+        unit="kr/kWh"
+        format={(v) => v.toLocaleString("nb-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        onChange={(v) => set("salePrice", v)}
+      />
+      <Slider
+        label="Salg til andre"
+        value={Math.round(input.billedShare * 1000) / 10}
+        min={0}
+        max={100}
+        step={5}
+        unit="%"
+        format={(v) => v.toLocaleString("nb-NO", { maximumFractionDigits: 1 })}
+        onChange={(v) => set("billedShare", v / 100)}
+        hint={input.billedShare < 1 ? "Resten lader egne kjøretøy og gir ingen salgsinntekt." : undefined}
+      />
+      <Slider
+        label="Byggets årsforbruk i dag"
+        value={input.buildingKwh}
+        min={0}
+        max={1_500_000}
+        step={10_000}
         unit="kWh"
         format={int}
-        onChange={(v) => set("batteryKwh", v)}
+        onChange={(v) => set("buildingKwh", v)}
       />
       <details className="more">
-        <summary>Flere valg</summary>
+        <summary>Anslå ladevolum fra kjøretøy</summary>
         <div className="more-body">
+          <Choice
+            label="Type kjøretøy"
+            value={input.vehicleType}
+            onChange={(v) => set("vehicleType", v)}
+            columns={2}
+            options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label }))}
+          />
+          <Slider label="Kjøretøy som lader" value={input.vehicles} min={1} max={40} step={1} onChange={(v) => set("vehicles", v)} />
           <Slider
-            label="Tid ved rampen"
-            value={input.dwellHours}
-            min={2}
-            max={14}
-            step={1}
-            unit="timer per døgn"
-            onChange={(v) => set("dwellHours", v)}
+            label="Kjørelengde per kjøretøy"
+            value={input.kmPerDay}
+            min={30}
+            max={700}
+            step={10}
+            unit="km per dag"
+            onChange={(v) => set("kmPerDay", v)}
           />
           <Slider
             label="Driftsdøgn"
             value={input.operatingDays}
-            min={200}
+            min={150}
             max={365}
             step={5}
             unit="per år"
             onChange={(v) => set("operatingDays", v)}
           />
-          <Slider
-            label="Andel av taket med solceller"
-            value={Math.round(input.solarCoverage * 100)}
-            min={0}
-            max={100}
-            step={5}
-            unit="%"
-            onChange={(v) => set("solarCoverage", v / 100)}
-          />
-          <Slider
-            label="Ledig effekt i nettilknytningen"
-            value={input.gridSpareKw ?? 0}
-            min={0}
-            max={2000}
-            step={25}
-            unit="kW"
-            format={int}
-            disabled={input.gridSpareKw === null}
-            onChange={(v) => set("gridSpareKw", v)}
-            hint={
-              <label className="inline-check">
-                <input
-                  type="checkbox"
-                  checked={input.gridSpareKw === null}
-                  onChange={(e) => set("gridSpareKw", e.target.checked ? null : 200)}
-                />
-                Vet ikke, vi sjekker med nettselskapet
-              </label>
-            }
-          />
+          <p className="derived">Gir omtrent {int(estimate)} kWh levert i året.</p>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            disabled={Math.round(estimate) === Math.round(input.deliveredKwh)}
+            onClick={() => set("deliveredKwh", Math.round(estimate))}
+          >
+            Bruk dette ladevolumet
+          </button>
         </div>
       </details>
       <KeyFigures result={result} />
@@ -173,11 +158,11 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           />
         </p>
         <h1>
-          <span>Lading for elektriske lastebiler.</span>
+          <span>Lading for elektriske tunge kjøretøy.</span>
           <span>Enova betaler inntil 60 %.</span>
         </h1>
         <p className="hook-lede">
-          Har dere elektriske lastebiler innom, eller planer om det? Vi hjelper dere med ladeløsninger og søknad om
+          Har dere elektriske tunge kjøretøy innom, eller planer om det? Vi hjelper dere med ladeløsninger og søknad om
           Enova-støtte. Smart Elektro leverer komplette løsninger. Fra første analyse til ferdig anlegg og videre
           service. Solceller og batterilagring kan også inngå i både løsningen og søknaden.
         </p>
@@ -192,7 +177,7 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
         </div>
         {deadline && (
           <p className="hook-deadline">
-            Neste søknadsfrist er <strong>{formatDeadline(deadline.date)}</strong>, om {deadline.daysLeft} dager.
+            <DeadlineText view={deadline} />
           </p>
         )}
       </header>
@@ -207,10 +192,14 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
               Skjul
             </button>
           </div>
+          <CalcControls input={input} result={result} set={set} replace={setInput} />
           <div className="figures-details">
             <Investment result={result} input={input} set={set} />
-            <Operation result={result} />
+            <Operation result={result} input={input} />
+            <Equipment input={input} result={result} set={set} replace={setInput} />
+            <PowerAndEnergy result={result} input={input} />
           </div>
+          <Assumptions input={input} result={result} set={set} />
         </section>
       )}
 
@@ -245,7 +234,7 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           </button>
           {deadline && (
             <p>
-              {deadline.daysLeft} dager til fristen {formatDeadline(deadline.date)}.
+              <DeadlineText view={deadline} />
             </p>
           )}
         </div>
@@ -272,12 +261,22 @@ export default function Experience({ theme }: { theme: SiteTheme }) {
           <Check check={check} onCta={() => go("kontakt")} />
         </div>
         <LeadForm theme={theme} result={result} check={check} input={input} answers={answers} />
-        <p className="disclaimer">
-          Tallene er et første anslag basert på typiske priser og forbruk, og sammenligner med diesel. Merpris for
-          elektriske biler er ikke med. Nettilknytning kommer i tillegg hvis kapasiteten ikke er avklart. Endelig pris og
-          søknadsgrunnlag avklares etter befaring og svar fra nettselskapet.
-          {result.chargePoints > 8 && ` Illustrasjonen viser 8 av ${result.chargePoints} lasteramper.`}
-        </p>
+        <div className="disclaimer">
+          <p>
+            Tallene er et foreløpig anslag basert på forutsetningene i kalkulatoren. Regnestykket inkluderer inntekter fra
+            ladesalg, verdien av solproduksjonen og kostnader til strøm, nettleie og drift. Eventuelt anleggsbidrag
+            avklares med nettselskapet. Endelig pris og søknadsgrunnlag avklares etter befaring og vurdering av
+            nettkapasiteten.
+          </p>
+          <p>
+            Spart diesel er ikke med i regnestykket. Planlegger dere å erstatte egne dieselbiler med elektriske
+            lastebiler, kan lading på eget depot gi ytterligere besparelser på drivstoff. Hvor mye avhenger av
+            kjørelengde, dieselforbruk og egen ladekostnad. Dette kan vi regne på sammen med dere, inkludert hvordan
+            egne biler påvirker kapasiteten til ladesalg. Merprisen for elektriske kjøretøy må også inngå i den samlede
+            vurderingen.
+          </p>
+          {input.chargers > 8 && <p>Illustrasjonen viser 8 av {input.chargers} ladeplasser.</p>}
+        </div>
       </section>
 
       <FloatingCta onClick={() => go("vurdering")} />

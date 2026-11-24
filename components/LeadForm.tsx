@@ -70,7 +70,7 @@ export default function LeadForm({
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Henvendelsen ble ikke sendt. Prøv igjen.");
       setState("sent");
-      reportLead(crypto.randomUUID?.() ?? String(Date.now()), Math.round(result.totalCost));
+      reportLead(crypto.randomUUID?.() ?? String(Date.now()), Math.round(result.investment ?? 0));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Henvendelsen ble ikke sendt. Prøv igjen.");
       setState("idle");

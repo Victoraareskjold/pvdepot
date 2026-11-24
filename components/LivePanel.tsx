@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { live, STATE_LABEL, type BayStatus } from "./world/live";
 import { int } from "@/lib/format";
 
-/** Sanntidsoversikt over ladeplassene, lest fra simuleringen i scenen. */
+/**
+ * Ladeplassene i illustrasjonen, lest fra simuleringen i scenen. Merket
+ * «Illustrasjon» så det ikke ser ut som drift av et ekte anlegg. Effekten
+ * er summen for plassene som faktisk lader; en bil som rygger inn gir 0 kW.
+ */
 export default function LivePanel({ chargerKw, total }: { chargerKw: number; total: number }) {
   const [bays, setBays] = useState<BayStatus[]>([]);
   const [solar, setSolar] = useState({ installed: 0, installing: false });
@@ -21,10 +25,10 @@ export default function LivePanel({ chargerKw, total }: { chargerKw: number; tot
   const shown = bays.slice(0, 5);
 
   return (
-    <aside className="live" aria-label="Ladeplassene akkurat nå">
+    <aside className="live" aria-label="Ladeplassene i illustrasjonen">
       <div className="live-head">
-        <span className="live-dot" />
-        <strong>Ladeplassene nå</strong>
+        <span className="live-tag">Illustrasjon</span>
+        <strong>Ladeplassene</strong>
         <span className="live-sum">
           {charging} av {bays.length} lader, {int(charging * chargerKw)} kW
         </span>

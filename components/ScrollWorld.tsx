@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PlannerInput, PlannerResult } from "@/lib/calc/model";
-import { int, kr } from "@/lib/format";
+import { dec, int, krExact } from "@/lib/format";
+import { SOLAR, VEHICLE_TYPES } from "@/lib/calc/assumptions";
+import { word } from "./sections";
 import type { SiteTheme } from "@/lib/sites";
 import WorldStage from "./WorldStage";
 import LivePanel from "./LivePanel";
 import type { Shot } from "./world/World";
 
 const MAX_BAYS = 8;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 interface Stop {
   shot: Shot;
@@ -54,42 +57,49 @@ export default function ScrollWorld({
   }, []);
 
   const stops = useMemo<Stop[]>(() => {
+    const n = input.chargers;
+    const full = result.nameplateKw > 0 && result.availableKw >= result.nameplateKw - 0.5;
     const out: Stop[] = [
       {
         shot: "hero",
         title: "Depotet deres",
-        text: `${result.chargePoints} elektriske lastebiler som lader på eget depot, med strøm fra nett, tak og batteri.`,
+        text: `${cap(word(n))} ${n === 1 ? "ladeplass" : "ladeplasser"} for tunge kjøretøy, med strøm fra nett, tak og batteri.`,
       },
       {
         shot: "fleet",
         title: "DC-lading på lasterampene",
-        text: `${result.chargePoints} × ${result.chargerKw} kW på veggen ved hver port. Bilene rygger inn og lader mens de står ved rampen. Hver bil trenger omtrent ${int(result.dailyKwhPerVehicle)} kWh i døgnet.`,
+        text: full
+          ? `${n === 1 ? "Ladeplassen" : `Alle ${word(n)} ladeplassene`} kan levere ${int(input.chargerKw)} kW samtidig i minst én time.${input.batteryUnits > 0 ? " Batteriet bidrar med effekt når flere biler lader samtidig." : ""}`
+          : `${n} × ${int(input.chargerKw)} kW DC ved portene. Sammen kan de levere ${int(result.availableKw)} kW samtidig i én time med dette nettet og batteriet.`,
       },
     ];
-    if (result.solarKwp > 0) {
+    if (input.solarKwp > 0) {
       out.push({
         shot: "roof",
         title: "Solceller på taket",
-        text: `${int(result.solarKwp)} kWp gir rundt ${int(result.annual.solarKwh / 1000)} MWh i året, tilsvarende ${int(result.annual.solarShareOfCharging * 100)} % av ladebehovet.`,
+        text: `${int(input.solarKwp)} kWp gir rundt ${int(result.energy.solarKwh / 1000)} MWh i året. Solstrømmen går til bygget, laderne og batteriet.`,
       });
     }
     out.push({
       shot: "energy",
-      title: input.batteryKwh > 0 ? "Batteri og styring" : "Nett og styring",
+      title: input.batteryUnits > 0 ? "Batteri og styring" : "Nett og styring",
       text:
-        input.batteryKwh > 0
-          ? `${int(input.batteryKwh)} kWh batteri tar effekttoppene. Styringssystemet fordeler strømmen og kan by batteriet inn i frekvensmarkedet.`
-          : result.gridDeficitKw > 0
-            ? `Nettet mangler ${int(result.gridDeficitKw)} kW. Et batteri kan dekke toppene i stedet for ny trafo.`
-            : "Laststyring fordeler strømmen mellom laderne, så dere ikke betaler for unødvendige effekttopper.",
+        input.batteryUnits > 0
+          ? `${int(result.batteryKwh)} kWh brukbar batterikapasitet og ${int(result.batteryKw)} kW utladning. Styringen holder nettuttaket på ${int(input.peakManagedKw)} kW i stedet for ${int(input.peakUnmanagedKw)} kW.`
+          : `Laststyring holder nettuttaket nede, så dere ikke betaler for unødvendige effekttopper.`,
     });
     out.push({
       shot: "results",
-      title: `Enova dekker ${kr(result.support)}`,
-      text: `Egen investering ${kr(result.netInvestment)}. Med dagens strøm- og dieselpriser er det tjent inn på ${result.paybackYears ? `${result.paybackYears.toFixed(1).replace(".", ",")} år` : "–"}.`,
+      title: `Anslått Enova-støtte ${krExact(result.support)}`,
+      text:
+        result.netInvestment === null
+          ? `Årlig netto fra anlegget ${krExact(result.annualNet)}. Investeringspris for dette utstyret må avklares.`
+          : result.paybackYears === null
+            ? `Egen investering ${krExact(result.netInvestment)}. Med disse forutsetningene tjenes investeringen ikke inn.`
+            : `Egen investering ${krExact(result.netInvestment)}. Årlig netto ${krExact(result.annualNet)} gir ${dec(result.paybackYears)} års tilbakebetaling ved fullt ladesalg.`,
     });
     return out;
-  }, [result, input.batteryKwh]);
+  }, [result, input.chargers, input.chargerKw, input.solarKwp, input.batteryUnits, input.peakManagedKw, input.peakUnmanagedKw]);
 
   // Fremdrift gjennom seksjonen styrer hvilket stopp som vises.
   useEffect(() => {
@@ -137,32 +147,17 @@ export default function ScrollWorld({
   };
   const labels = useMemo(
     () => ({
-      chargers: `${result.chargePoints} × ${result.chargerKw} kW`,
-      solar: result.solarKwp > 0 ? `${int(result.solarKwp)} kWp` : undefined,
-      battery:
-        input.batteryKwh > 0 ? `${int(input.batteryKwh)} kWh` : undefined,
-      control:
-        input.batteryKwh > 0
-          ? "Laststyring og frekvensmarked"
-          : result.solarKwp > 0
-            ? "Sol og laststyring"
-            : undefined,
-      grid:
-        result.gridDeficitKw > 0
-          ? `+${int(result.gridDeficitKw)} kW`
-          : input.gridSpareKw !== null
-            ? `${int(input.gridSpareKw)} kW ledig`
-            : undefined,
+      chargers: `${input.chargers} × ${int(input.chargerKw)} kW DC`,
+      solar: input.solarKwp > 0 ? `${int(input.solarKwp)} kWp` : undefined,
+      battery: result.batteryKwh > 0 ? `${int(result.batteryKwh)} kWh` : undefined,
+      control: input.batteryUnits > 0 || input.solarKwp > 0 ? "Laststyring" : undefined,
+      grid: `${int(input.peakManagedKw)} kW nettuttak`,
     }),
-    [
-      result.chargePoints,
-      result.chargerKw,
-      result.solarKwp,
-      result.gridDeficitKw,
-      input.batteryKwh,
-      input.gridSpareKw,
-    ],
+    [input.chargers, input.chargerKw, input.solarKwp, input.batteryUnits, input.peakManagedKw, result.batteryKwh],
   );
+  const vehicle = VEHICLE_TYPES.find((v) => v.id === input.vehicleType) ?? VEHICLE_TYPES[0];
+  // 3D-bygget dimensjoneres etter takflaten som gir valgt kWp.
+  const roofM2 = Math.max(800, input.solarKwp / (SOLAR.kwpPerM2 * SOLAR.refCoverage));
 
   return (
     <section
@@ -176,13 +171,13 @@ export default function ScrollWorld({
         <div className="scrolly-frame">
           <WorldStage
             active={visible}
-            bays={Math.min(result.chargePoints, MAX_BAYS)}
-            vehicleModel={result.vehicle.model}
-            roofM2={input.roofM2}
-            solarCoverage={input.solarCoverage}
-            batteryKwh={input.batteryKwh}
-            gridUpgrade={result.gridDeficitKw > 0}
-            chargerKw={result.chargerKw}
+            bays={Math.max(1, Math.min(input.chargers, MAX_BAYS))}
+            vehicleModel={vehicle.model}
+            roofM2={roofM2}
+            solarCoverage={input.solarKwp > 0 ? SOLAR.refCoverage : 0}
+            batteryKwh={result.batteryKwh}
+            gridUpgrade={false}
+            chargerKw={input.chargerKw}
             shot={stop.shot}
             accent={theme.accent}
             energy={theme.energy}
@@ -212,7 +207,7 @@ export default function ScrollWorld({
             <h2 key={stop.title}>{stop.title}</h2>
             <p key={stop.text}>{stop.text}</p>
           </div>
-          <LivePanel chargerKw={result.chargerKw} total={result.chargePoints} />
+          <LivePanel chargerKw={input.chargerKw} total={input.chargers} />
           <div
             className="scrolly-progress"
             style={{ transform: `scaleX(${progress})` }}

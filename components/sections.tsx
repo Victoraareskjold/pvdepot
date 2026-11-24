@@ -1,7 +1,14 @@
 "use client";
 
-import { VEHICLE_TYPES, ASSUMPTIONS } from "@/lib/calc/assumptions";
-import type { PlannerInput, PlannerResult } from "@/lib/calc/model";
+import { ASSUMPTIONS, BATTERY_UNIT, SOLAR, STANDARD_PACKAGE } from "@/lib/calc/assumptions";
+import {
+  chargingShare,
+  DEFAULT_INPUT,
+  withChargingShare,
+  type PlannerInput,
+  type PlannerResult,
+  type SupportMode,
+} from "@/lib/calc/model";
 import {
   CHECK_DISCLAIMER,
   ctaFor,
@@ -11,171 +18,51 @@ import {
   type QualifyAnswers,
   type QualifyResult,
 } from "@/lib/calc/qualify";
-import { int, kr, pct, dec } from "@/lib/format";
-import { Slider, Choice } from "./controls";
-
-const ANSWER_OPTIONS = [
-  { value: "ja", label: "Ja" },
-  { value: "nei", label: "Nei" },
-  { value: "usikker", label: "Usikker" },
-] as const;
-
-/* ---------------- Steg ---------------- */
+import { int, krExact } from "@/lib/format";
+import { Slider, Choice, NumberField } from "./controls";
 
 export type Setter = <K extends keyof PlannerInput>(key: K, value: PlannerInput[K]) => void;
 
-export function VehicleStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
-  const dwellWarning = result.warnings.find((w) => w.id === "dwell-too-short");
-  return (
-    <>
-      <Choice
-        label="Type kjøretøy"
-        value={input.vehicleType}
-        columns={2}
-        options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label, hint: v.hint }))}
-        onChange={(v) => set("vehicleType", v)}
-      />
-      <Slider
-        label="Elektriske kjøretøy på depotet"
-        value={input.vehicles}
-        min={1}
-        max={40}
-        step={1}
-        onChange={(v) => set("vehicles", v)}
-      />
-      <Slider
-        label="Kjørelengde per kjøretøy"
-        value={input.kmPerDay}
-        min={30}
-        max={700}
-        step={10}
-        unit="km per dag"
-        onChange={(v) => set("kmPerDay", v)}
-      />
-      <Slider
-        label="Tid på depotet"
-        value={input.dwellHours}
-        min={2}
-        max={16}
-        step={1}
-        unit="timer per døgn"
-        onChange={(v) => set("dwellHours", v)}
-      />
-      <Slider
-        label="Driftsdøgn"
-        value={input.operatingDays}
-        min={150}
-        max={365}
-        step={5}
-        unit="per år"
-        onChange={(v) => set("operatingDays", v)}
-      />
-      <p className={`derived${dwellWarning ? " is-warning" : ""}`}>
-        {dwellWarning ? (
-          <>
-            Hver bil trenger {int(result.dailyKwhPerVehicle)} kWh per døgn, som krever {dwellWarning.neededKw} kW på{" "}
-            {input.dwellHours} timer. Det er mer enn største lader ({result.chargerKw} kW). Øk tiden på depotet, eller
-            kombiner med lading underveis.
-          </>
-        ) : (
-          <>
-            Hver bil trenger omtrent {int(result.dailyKwhPerVehicle)} kWh per døgn. Det holder med{" "}
-            {result.chargePoints} ladere på {result.chargerKw} kW.
-          </>
-        )}
-      </p>
-    </>
-  );
+/* ---------------- Tekster ---------------- */
+
+/** Rett under resultatkortene, også i regnestykket (punkt 3). */
+export const DIESEL_NOTE =
+  "Spart diesel er ikke med i regnestykket. Hvis dere senere erstatter egne dieselbiler med elektriske lastebiler, kan dere også spare drivstoffkostnader. Hvor mye dere sparer, avhenger av kjørelengde, dieselforbruk og hva det koster å lade egne biler.";
+
+/** Ved tilbakebetalingstiden. */
+export const PAYBACK_NOTE =
+  "Anslaget forutsetter fullt ladesalg fra første driftsår. Bruker dere tid på å bygge opp trafikken, tar det lengre tid å tjene inn investeringen.";
+
+export const NOT_PAID_BACK = "Investeringen tjenes ikke inn med disse forutsetningene.";
+export const PRICE_UNKNOWN = "Investeringspris må avklares";
+
+const WORDS = ["null", "én", "to", "tre", "fire", "fem", "seks", "sju", "åtte", "ni", "ti", "elleve", "tolv"];
+/** 6 → «seks», 14 → «14» */
+export const word = (n: number) => WORDS[n] ?? String(n);
+const nb = (n: number, max = 2, min = 0) =>
+  n.toLocaleString("nb-NO", { maximumFractionDigits: max, minimumFractionDigits: min });
+const kwh = (n: number) => `${int(n)} kWh`;
+const pcText = (v: number) => `${nb(v, 1)} %`;
+
+/** Utstyret i én setning, for investeringsteksten og depotet. */
+export function equipmentText(input: PlannerInput, r: PlannerResult): string {
+  const chargers = `${word(input.chargers)} DC-${input.chargers === 1 ? "lader" : "ladere"} på ${int(input.chargerKw)} kW`;
+  const solar = input.solarKwp > 0 ? `${nb(input.solarKwp, 1)} kWp solceller` : "ingen solceller";
+  const battery =
+    input.batteryUnits > 0
+      ? `${word(input.batteryUnits)} ${input.batteryUnits === 1 ? "batterienhet" : "batterienheter"} med til sammen ${kwh(r.batteryKwh)} brukbar kapasitet og ${int(r.batteryKw)} kW kontinuerlig utladningseffekt`
+      : "uten batteri";
+  return `${chargers}, ${solar}, ${battery} og smart styring`;
 }
 
-export function RoofStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
-  return (
-    <>
-      <Slider
-        label="Takflate på bygget"
-        value={input.roofM2}
-        min={0}
-        max={20000}
-        step={100}
-        unit="m²"
-        format={int}
-        onChange={(v) => set("roofM2", v)}
-      />
-      <Slider
-        label="Del av taket med solceller"
-        value={Math.round(input.solarCoverage * 100)}
-        min={0}
-        max={100}
-        step={5}
-        unit="%"
-        onChange={(v) => set("solarCoverage", v / 100)}
-        hint={
-          input.solarCoverage > 0 && input.roofM2 > 0
-            ? `Gir omtrent ${int(result.annual.solarKwh / 1000)} MWh i året, tilsvarende ${pct(result.annual.solarShareOfCharging)} av ladebehovet.`
-            : undefined
-        }
-      />
-    </>
-  );
+/** «3,9 år», «Pris må avklares» eller «Tjenes ikke inn» */
+export function paybackLabel(r: PlannerResult, decimals = 1): string {
+  if (r.investment === null) return "Pris må avklares";
+  if (r.paybackYears === null) return "Tjenes ikke inn";
+  return `${nb(r.paybackYears, decimals, decimals)} år`;
 }
 
-export function PowerStep({ input, result, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
-  const gridKnown = input.gridSpareKw !== null;
-  return (
-    <>
-      <div className="field">
-        <div className="field-head">
-          <span className="label">Ledig effekt i nettilknytningen</span>
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={!gridKnown}
-              onChange={(e) => set("gridSpareKw", e.target.checked ? null : 200)}
-            />
-            Vet ikke
-          </label>
-        </div>
-        {gridKnown ? (
-          <Slider
-            label="Ledig effekt"
-            value={input.gridSpareKw ?? 0}
-            min={0}
-            max={3000}
-            step={25}
-            unit="kW"
-            format={int}
-            onChange={(v) => set("gridSpareKw", v)}
-          />
-        ) : (
-          <p className="field-hint">
-            Vi regner som om nettet holder. Vi kan sjekke kapasiteten med nettselskapet for dere.
-          </p>
-        )}
-      </div>
-      <Slider
-        label="Batteri"
-        value={input.batteryKwh}
-        min={0}
-        max={3000}
-        step={50}
-        unit="kWh"
-        format={int}
-        onChange={(v) => set("batteryKwh", v)}
-        hint={
-          input.batteryKwh > 0
-            ? `Gir ${int(result.batteryKw)} kW ekstra ladeeffekt når nettet ikke strekker til.`
-            : "Et batteri kan erstatte dyr nettforsterkning og telles med i støttegrunnlaget når det trengs for laderne."
-        }
-      />
-      {result.gridDeficitKw > 0 && (
-        <p className="derived is-warning">
-          Laderne trenger {int(result.managedPeakKw)} kW med laststyring. Det mangler {int(result.gridDeficitKw)} kW, som
-          gir en anslått nettforsterkning på {kr(result.costs.find((c) => c.id === "grid")!.cost)}.
-        </p>
-      )}
-    </>
-  );
-}
+/* ---------------- Støttesjekk ---------------- */
 
 export function CheckStep({
   answers,
@@ -222,135 +109,450 @@ function choiceColumns(options: { label: string }[]) {
   return options.length;
 }
 
-/* ---------------- Resultater ---------------- */
+/* ---------------- Se hele regnestykket ---------------- */
 
-export function Investment({ result, input, set }: { result: PlannerResult; input: PlannerInput; set: Setter }) {
-  const lines = result.costs.filter((c) => c.cost > 0);
-  const cutoff = ASSUMPTIONS.enovaHistoricalCutoffKrPerKw;
+/** Forbruk, ladevolum, fordeling og pris. Øverst i regnestykket. */
+export function CalcControls({
+  input,
+  result: r,
+  set,
+  replace,
+}: {
+  input: PlannerInput;
+  result: PlannerResult;
+  set: Setter;
+  replace: (next: PlannerInput) => void;
+}) {
+  const share = chargingShare(input);
+  const total = input.buildingKwh + r.energy.chargerAcKwh;
+  return (
+    <article className="card calc-controls">
+      <h3>Regn med egne tall</h3>
+      <div className="calc-grid">
+        <NumberField
+          label="Byggets årsforbruk i dag, uten nye ladere"
+          value={input.buildingKwh}
+          unit="kWh"
+          onChange={(v) => set("buildingKwh", v)}
+        />
+        <NumberField
+          label="Hvor mye skal kjøretøyene lade i året?"
+          value={input.deliveredKwh}
+          unit="kWh levert"
+          onChange={(v) => set("deliveredKwh", v)}
+        />
+      </div>
+      <Slider
+        label="Fordeling av strømforbruket – bygg og lading"
+        value={share * 100}
+        min={0}
+        max={100}
+        step={0.5}
+        format={(v) => `${pcText(100 - v)} bygg / ${pcText(v)} lading`}
+        onChange={(v) => replace(withChargingShare(input, v / 100))}
+        hint={
+          total > 0 ? (
+            <>
+              {kwh(input.buildingKwh)} til bygg og {kwh(r.energy.chargerAcKwh)} til ladere av totalt {kwh(total)}. Med
+              ladetap gir {kwh(r.energy.chargerAcKwh)} til laderne {kwh(input.deliveredKwh)} levert til kjøretøyene.
+            </>
+          ) : (
+            "0 kWh til bygg og 0 kWh til ladere."
+          )
+        }
+      />
+      <Slider
+        label="Hvem bruker ladingen?"
+        value={input.billedShare * 100}
+        min={0}
+        max={100}
+        step={5}
+        format={(v) => `${pcText(v)} salg til andre / ${pcText(100 - v)} egne kjøretøy`}
+        onChange={(v) => set("billedShare", v / 100)}
+        hint={
+          <>
+            {kwh(r.energy.billedKwh)} fakturert og {kwh(r.energy.ownKwh)} til egne kjøretøy. Bare fakturert energi gir
+            salgsinntekt. For egne kjøretøy er strømkostnaden med, mens spart diesel må regnes separat.
+          </>
+        }
+      />
+      <div className="calc-grid">
+        <NumberField
+          label="Salgspris til andre"
+          value={input.salePrice}
+          decimals={2}
+          max={50}
+          unit="kr/kWh eks. mva."
+          onChange={(v) => set("salePrice", v)}
+        />
+        <Slider
+          label="Juster prisen"
+          value={input.salePrice}
+          min={0}
+          max={8}
+          step={0.05}
+          unit="kr/kWh"
+          format={(v) => nb(v, 2, 2)}
+          onChange={(v) => set("salePrice", v)}
+        />
+      </div>
+      <button type="button" className="link-btn calc-reset" onClick={() => replace(DEFAULT_INPUT)}>
+        Tilbakestill til eksemplet
+      </button>
+    </article>
+  );
+}
+
+/** Ladere, sol og batteri. Avvik fra standardpakken har ingen bekreftet pris. */
+export function Equipment({ input, result: r, set, replace }: { input: PlannerInput; result: PlannerResult; set: Setter; replace: (next: PlannerInput) => void }) {
+  const full = r.availableKw >= r.nameplateKw - 0.5 && r.nameplateKw > 0;
+  const m2 = input.solarKwp / (SOLAR.kwpPerM2 * SOLAR.refCoverage);
+  return (
+    <article className="card">
+      <h3>Utstyr</h3>
+      <Slider label="DC-ladere" value={input.chargers} min={1} max={12} step={1} onChange={(v) => set("chargers", v)} />
+      <Choice
+        label="Effekt per lader"
+        value={String(input.chargerKw)}
+        columns={ASSUMPTIONS.chargerSizesKw.length}
+        options={ASSUMPTIONS.chargerSizesKw.map((k) => ({ value: String(k), label: `${k} kW` }))}
+        onChange={(v) => set("chargerKw", Number(v))}
+      />
+      <Slider
+        label="Solceller"
+        value={input.solarKwp}
+        min={0}
+        max={600}
+        step={1}
+        unit="kWp"
+        onChange={(v) => set("solarKwp", v)}
+        hint={
+          input.solarKwp > 0
+            ? `Ca. ${kwh(r.energy.solarKwh)} i året. Tilsvarer ${int(m2)} m² tak ved ${int(SOLAR.refCoverage * 100)} % dekning.`
+            : "Uten solceller blir solproduksjon og solinntekt null."
+        }
+      />
+      <Slider
+        label="Batterienheter"
+        value={input.batteryUnits}
+        min={0}
+        max={14}
+        step={1}
+        onChange={(v) => set("batteryUnits", v)}
+        hint={`${input.batteryUnits} × ${BATTERY_UNIT.kwh} kWh = ${kwh(r.batteryKwh)} brukbar kapasitet, ${int(r.batteryKw)} kW kontinuerlig utladning.`}
+      />
+      <p className="derived">
+        {full
+          ? `Alle ${word(input.chargers)} ladeplassene kan levere ${int(input.chargerKw)} kW samtidig i minst én time, til sammen ${int(r.nameplateKw)} kW.`
+          : `Ladeplassene kan levere ${nb(r.availableKw, 1)} kW DC samtidig i én time, av ${int(r.nameplateKw)} kW merkeeffekt.`}{" "}
+        Forutsetter {int(input.peakManagedKw)} kW nettuttak, {int(input.peakBeforeKw)} kW samtidig bygglast, ingen sol og
+        tilstrekkelig ladetilstand i batteriet.
+      </p>
+      {!r.standardPackage && (
+        <p className="derived is-warning">
+          {r.investment === null
+            ? `${PRICE_UNKNOWN} for dette utstyret. Standardpakken koster ${krExact(STANDARD_PACKAGE.price)} eks. mva.`
+            : "Prisen er standardpakken justert for utstyret dere har valgt."}{" "}
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() =>
+              replace({
+                ...input,
+                chargers: STANDARD_PACKAGE.chargers,
+                chargerKw: STANDARD_PACKAGE.chargerKw,
+                solarKwp: STANDARD_PACKAGE.solarKwp,
+                batteryUnits: STANDARD_PACKAGE.batteryUnits,
+              })
+            }
+          >
+            Tilbake til standardpakken
+          </button>
+        </p>
+      )}
+    </article>
+  );
+}
+
+const SUPPORT_OPTIONS: { value: SupportMode; label: string }[] = [
+  { value: "amount", label: "Søkebeløp" },
+  { value: "score", label: "Ønsket score" },
+  { value: "none", label: "Ingen støtte" },
+];
+
+export function Investment({ result: r, input, set }: { result: PlannerResult; input: PlannerInput; set: Setter }) {
   return (
     <article className="card">
       <h3>Investering og støtte</h3>
+      <p className="card-lede">
+        {r.standardPackage ? "Eksemplet gjelder et komplett installert anlegg med " : "Dere har valgt "}
+        {equipmentText(input, r)}.{" "}
+        {r.investment !== null ? (
+          <>
+            Samlet investering er {krExact(r.investment)} eks. mva.
+            {r.support > 0 && (
+              <>
+                {" "}
+                Med anslått Enova-støtte på {krExact(r.support)} blir egen investering {krExact(r.netInvestment!)}.
+              </>
+            )}
+          </>
+        ) : (
+          <>{PRICE_UNKNOWN} for dette utstyret.</>
+        )}{" "}
+        Eventuelt anleggsbidrag avklares med nettselskapet.
+      </p>
       <table className="ledger">
         <tbody>
-          {lines.map((c) => (
-            <tr key={c.id}>
-              <th scope="row">
-                {c.label}
-                {c.id === "battery" && c.eligible === 0 && <span className="tag">ikke støtte</span>}
-                {c.eligible > 0 && c.eligible < c.cost && <span className="tag">delvis støtte</span>}
-              </th>
-              <td>{kr(c.cost)}</td>
-            </tr>
-          ))}
-          {input.gridSpareKw === null && (
-            <tr className="extra">
-              <th scope="row">Nettilknytning</th>
-              <td>kommer i tillegg</td>
-            </tr>
-          )}
-          <tr className="sum">
-            <th scope="row">Samlet investering</th>
-            <td>{kr(result.totalCost)}</td>
+          <tr>
+            <th scope="row">Komplett installasjon</th>
+            <td>{r.investment === null ? "avklares" : krExact(r.investment)}</td>
           </tr>
           <tr className="support">
-            <th scope="row">Enova-støtte</th>
-            <td>− {kr(result.support)}</td>
+            <th scope="row">Anslått Enova-støtte</th>
+            <td>− {krExact(r.support)}</td>
           </tr>
           <tr className="total">
             <th scope="row">Egen investering</th>
-            <td>{kr(result.netInvestment)}</td>
+            <td>{r.netInvestment === null ? "avklares" : krExact(r.netInvestment)}</td>
+          </tr>
+          <tr className="extra">
+            <th scope="row">Anleggsbidrag</th>
+            <td>avklares med nettselskapet</td>
           </tr>
         </tbody>
       </table>
 
       <div className="rank">
-        <Slider
-          label="Støttegrad dere søker om"
-          value={Math.round(result.supportRate * 100)}
-          min={5}
-          max={60}
-          step={1}
-          unit="%"
-          onChange={(v) => set("supportRate", v / 100)}
-          hint={
-            <label className="inline-check">
-              <input
-                type="checkbox"
-                checked={input.supportRate === null}
-                onChange={(e) => set("supportRate", e.target.checked ? null : Math.round(result.supportRate * 100) / 100)}
-              />
-              Velg automatisk, så søknaden holder seg under grensen
-            </label>
-          }
+        <Choice
+          label="Støtte i regnestykket"
+          value={input.supportMode}
+          columns={3}
+          options={SUPPORT_OPTIONS}
+          onChange={(v) => set("supportMode", v)}
         />
-        <p className={`rank-figure${result.competitive === false ? " is-warning" : ""}`}>
-          <span className="big">{int(result.krPerKw)}</span> kr støtte per kW ladeeffekt
-        </p>
+        {input.supportMode === "amount" && (
+          <NumberField
+            label="Søkebeløp"
+            value={input.supportAmount}
+            unit="kr"
+            onChange={(v) => set("supportAmount", v)}
+          />
+        )}
+        {input.supportMode === "score" && (
+          <NumberField
+            label="Ønsket rangeringsscore"
+            value={input.supportScore}
+            unit="kr per kW"
+            onChange={(v) => set("supportScore", v)}
+            hint={`${int(input.supportScore)} kr × ${nb(r.availableKw, 1)} kW = ${krExact(input.supportScore * r.availableKw)}, høyst 3 mill. kr og 60 % av godkjente kostnader.`}
+          />
+        )}
+        {input.supportMode !== "none" && (
+          <p className="rank-figure">
+            <span className="big">{int(r.krPerKw)}</span> kr støtte per kW ladeeffekt
+          </p>
+        )}
         <p className="field-hint">
-          Enova rangerer søknadene på støtte per kW samtidig ladeeffekt med laststyring (her {int(result.availableKw)} kW).
-          Jo lavere tall, jo bedre plass i køen.
-          {cutoff !== null &&
-            (result.competitive
-              ? ` I de siste rundene har bare søknader under ${int(cutoff)} kr per kW fått støtte, og dette er under.`
-              : ` I de siste rundene har bare søknader under ${int(cutoff)} kr per kW fått støtte. Dette er over, så søknaden vil trolig få avslag.`)}
-          {result.supportCapped && " Støtten er begrenset av taket på 3 mill. kr."}
+          Enova rangerer søknadene på støtte delt på dokumentert samtidig ladeeffekt i minst én time (her{" "}
+          {nb(r.availableKw, 1)} kW), forutsatt ingen annen offentlig støtte. Lavere tall gir bedre plass.
+          {r.supportRate !== null && r.support > 0 && ` Støtten tilsvarer ${pcText(r.supportRate * 100)} av kostnadene.`}
+          {r.supportLimitedBy === "cap" && " Støtten er begrenset av taket på 3 mill. kr."}
+          {r.supportLimitedBy === "rate" && " Støtten er begrenset til 60 % av godkjente kostnader."} Batteriets
+          støtteberettigelse må vurderes mot behov og vilkår. Ingen støtte er garantert.
         </p>
       </div>
     </article>
   );
 }
 
-export function Operation({ result }: { result: PlannerResult }) {
-  const a = result.annual;
+export function Operation({ result: r, input }: { result: PlannerResult; input: PlannerInput }) {
+  const ramp = r.rampUp;
   return (
     <article className="card">
       <h3>Drift per år</h3>
-      <table className="ledger">
+      <p className="card-lede">
+        Ved fullt ladesalg: {kwh(input.deliveredKwh)} levert til kjøretøy og {kwh(r.energy.chargerAcKwh)} inn på laderne.
+      </p>
+      <table className="ledger ledger-how">
         <tbody>
-          <tr>
-            <th scope="row">Diesel i dag</th>
-            <td>{kr(a.dieselCost)}</td>
-          </tr>
-          <tr>
-            <th scope="row">Strøm til lading</th>
-            <td>− {kr(a.electricityCost)}</td>
-          </tr>
-          <tr className="sum">
-            <th scope="row">Spart drivstoff</th>
-            <td>{kr(a.fuelSaving)}</td>
-          </tr>
-          {a.solarValue > 0 && (
-            <tr>
-              <th scope="row">Solstrøm</th>
-              <td>{kr(a.solarValue)}</td>
+          {r.lines.map((l) => (
+            <tr key={l.id}>
+              <th scope="row">
+                {l.label}
+                <span className="how">{l.how}</span>
+              </th>
+              <td>{l.value < 0 ? `− ${krExact(-l.value)}` : krExact(l.value)}</td>
             </tr>
-          )}
-          {a.peakSaving > 0 && (
-            <tr>
-              <th scope="row">Lavere effektledd</th>
-              <td>{kr(a.peakSaving)}</td>
-            </tr>
-          )}
+          ))}
           <tr className="total">
-            <th scope="row">Spart per år</th>
-            <td>{kr(a.totalSaving)}</td>
+            <th scope="row">Årlig netto før renter og skatt</th>
+            <td>{r.annualNet < 0 ? `− ${krExact(-r.annualNet)}` : krExact(r.annualNet)}</td>
           </tr>
         </tbody>
       </table>
       <div className="facts">
         <p>
-          <span className="big">{result.paybackYears ? dec(result.paybackYears) : "–"}</span> år til egen investering
-          er tjent inn
-        </p>
-        <p>
-          <span className="big">{int(a.co2Tonnes)}</span> tonn mindre CO₂ i året
+          <span className="big">{paybackLabel(r, 2)}</span>
+          {r.investment !== null && r.paybackYears !== null && " enkel tilbakebetaling ved fullt ladesalg"}
         </p>
       </div>
       <p className="field-hint">
-        Strøm {dec(ASSUMPTIONS.electricityPrice)} kr/kWh og diesel {ASSUMPTIONS.dieselPrice} kr/l,
-        eks. mva. {int(a.chargingKwh / 1000)} MWh lading i året.
+        {r.investment !== null && r.paybackYears === null ? NOT_PAID_BACK : PAYBACK_NOTE}
+      </p>
+
+      <h4>Med gradvis oppstart</h4>
+      <table className="ledger">
+        <tbody>
+          {ramp.years.map((v, y) => (
+            <tr key={y}>
+              <th scope="row">
+                {y < ramp.years.length - 1
+                  ? `År ${y + 1}, ${int(ASSUMPTIONS.rampUp[y] * 100)} % av ladevolumet`
+                  : `Fra år ${y + 1}, fullt volum`}
+              </th>
+              <td>{v < 0 ? `− ${krExact(-v)}` : krExact(v)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="field-hint">
+        {ramp.paybackYears !== null
+          ? `Tilbakebetaling fra oppstart: ${nb(ramp.paybackYears, 2, 2)} år. `
+          : r.investment === null
+            ? ""
+            : `${NOT_PAID_BACK} `}
+        Samme effekttopper, driftskostnader og solfordeling som ved full drift.
+      </p>
+      {r.netAfterPeriod !== null && (
+        <p className="field-hint">
+          Akkumulert netto etter investering over {r.periodYears} år: <strong>{krExact(r.netAfterPeriod)}</strong> ved
+          fullt volum fra år 1. Faste priser, før renter, skatt og større reinvesteringer.
+        </p>
+      )}
+      <p className="field-hint">{DIESEL_NOTE}</p>
+    </article>
+  );
+}
+
+export function PowerAndEnergy({ result: r, input }: { result: PlannerResult; input: PlannerInput }) {
+  const e = r.energy;
+  const p = r.power;
+  return (
+    <article className="card">
+      <h3>Effekttopper og energi</h3>
+      <table className="ledger">
+        <thead>
+          <tr>
+            <th scope="col">Forutsatt nettopp hver måned</th>
+            <th scope="col" className="num">
+              kW
+            </th>
+            <th scope="col" className="num">
+              Effektledd per år
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Dagens bygg, uten ladere</th>
+            <td>{int(input.peakBeforeKw)}</td>
+            <td>{krExact(p.beforeCost)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Med ladere uten styring</th>
+            <td>{int(input.peakUnmanagedKw)}</td>
+            <td>{krExact(p.unmanagedCost)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Med ladere og styring</th>
+            <td>{int(input.peakManagedKw)}</td>
+            <td>{krExact(p.managedCost)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="field-hint">
+        Styringen reduserer effektkostnaden med {krExact(p.controlSaving)} per år sammenlignet med ustyrt lading.
+        Regnestykket fører økningen fra dagens bygg til styrt drift én gang. Effektledd {nb(input.powerFeeSummer)} kr/kW
+        per måned april–september og {nb(input.powerFeeWinter)} kr/kW oktober–mars.
+      </p>
+
+      <h4>Energi per år</h4>
+      <table className="ledger">
+        <tbody>
+          <tr>
+            <th scope="row">Kjøpt fra nettet</th>
+            <td>{kwh(e.gridPurchaseKwh)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Solproduksjon</th>
+            <td>{kwh(e.solarKwh)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Til bygget</th>
+            <td>{kwh(input.buildingKwh)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Inn på laderne (inkl. ladetap)</th>
+            <td>{kwh(e.chargerAcKwh)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Sol solgt til nettet</th>
+            <td>{kwh(e.solarExportKwh)}</td>
+          </tr>
+          <tr>
+            <th scope="row">Batteritap</th>
+            <td>{kwh(e.solarBatteryLossKwh + e.gridBatteryLossKwh)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="field-hint">
+        Årsanslag med forutsatt nettopp. Faktisk fordeling, tap og månedsmaks krever last- og produksjonsprofiler time
+        for time. Solfordelingen er et arbeidsanslag: {int(SOLAR.toBuilding * 100)} % direkte til bygget,{" "}
+        {int(SOLAR.toChargers * 100)} % direkte til lading, {int(SOLAR.toBattery * 100)} % inn på batteriet og resten
+        til nettet. En gevinst fra prishandel eller frekvensmarked er ikke med.
       </p>
     </article>
+  );
+}
+
+/** Strømpriser, nettleie, effekttopper og drift. */
+export function Assumptions({ input, result: r, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
+  const f = (key: keyof PlannerInput, label: string, unit: string, decimals = 0) => (
+    <NumberField
+      compact
+      label={label}
+      value={input[key] as number}
+      unit={unit}
+      decimals={decimals}
+      onChange={(v) => set(key, v as never)}
+    />
+  );
+  return (
+    <details className="card more-assumptions">
+      <summary>
+        <h3>Flere forutsetninger</h3>
+        <span>
+          {ASSUMPTIONS.priceArea}, Elvia og standardverdiene
+        </span>
+      </summary>
+      <p className="field-hint">
+        {ASSUMPTIONS.tariffLabel} Ved ukjent nettselskap brukes Oslo-eksemplet. Marginal innkjøpskostnad er{" "}
+        {nb(r.energy.marginalPrice, 4)} kr/kWh.
+      </p>
+      <div className="assumption-grid">
+        {f("spotPrice", "Smart innkjøpspris", "kr/kWh", 4)}
+        {f("energyFee", "Energiledd", "kr/kWh", 4)}
+        {f("elTax", "Elavgift", "kr/kWh", 4)}
+        {f("exportPrice", "Pris på soloverskudd", "kr/kWh", 4)}
+        {f("powerFeeSummer", "Effektledd sommer", "kr/kW/mnd", 2)}
+        {f("powerFeeWinter", "Effektledd vinter", "kr/kW/mnd", 2)}
+        {f("peakBeforeKw", "Nettopp før prosjektet", "kW")}
+        {f("peakUnmanagedKw", "Nettopp uten styring", "kW")}
+        {f("peakManagedKw", "Nettopp med styring", "kW")}
+        {f("opex", "Drift og service", "kr/år")}
+      </div>
+    </details>
   );
 }
 

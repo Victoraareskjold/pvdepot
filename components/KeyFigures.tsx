@@ -2,33 +2,42 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PlannerResult } from "@/lib/calc/model";
-import { dec, kr } from "@/lib/format";
+import { krExact } from "@/lib/format";
+import { DIESEL_NOTE, NOT_PAID_BACK, PAYBACK_NOTE, paybackLabel } from "./sections";
 
 /**
- * Tre nøkkeltall (Smart Elektro, 19.11.2026): Enova-støtte, nedbetalingstid
- * og spart over 10 år. Resten ligger i regnestykket. Tallene ruller mykt
- * til ny verdi når en slider endres.
+ * Tre resultatkort (Asbjørn, 24.11.2026): anslått Enova-støtte,
+ * tilbakebetaling ved fullt ladesalg og årlig netto fra anlegget. Tallene
+ * ruller mykt til ny verdi når en slider endres.
  */
 export default function KeyFigures({ result: r }: { result: PlannerResult }) {
-  const figures: { label: string; value: number | null; format: (v: number) => string; tone?: "dark" | "charge" }[] = [
-    { label: "Enova-støtte", value: r.support, format: kr, tone: "charge" },
-    { label: "Nedbetalt på", value: r.paybackYears, format: (v) => `${dec(v)} år` },
-    { label: `Spart over ${r.periodYears} år`, value: r.netSavingPeriod, format: (v) => kr(v), tone: "dark" },
-  ];
+  const payback = r.investment !== null && r.paybackYears !== null ? r.paybackYears : null;
   return (
     <div className="figures-box">
       <dl className="kpi-grid">
-        {figures.map((f) => (
-          <div key={f.label} className={`kpi${f.tone ? ` kpi-${f.tone}` : ""}`}>
-            <dt>{f.label}</dt>
-            <dd>{f.value === null ? "–" : <Tween value={f.value} format={f.format} />}</dd>
-          </div>
-        ))}
+        <div className="kpi kpi-charge">
+          <dt>Anslått Enova-støtte</dt>
+          <dd>
+            <Tween value={r.support} format={krExact} />
+          </dd>
+        </div>
+        <div className="kpi">
+          <dt>Tilbakebetaling ved fullt ladesalg</dt>
+          <dd className={payback === null ? "kpi-text" : undefined}>
+            {payback === null ? paybackLabel(r) : <Tween value={payback} format={(v) => `${v.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} år`} />}
+          </dd>
+        </div>
+        <div className="kpi kpi-dark">
+          <dt>Årlig netto fra anlegget</dt>
+          <dd>
+            <Tween value={r.annualNet} format={krExact} />
+          </dd>
+        </div>
       </dl>
       <p className="kpi-note">
-        Besparelsen er spart diesel. Merpris for elektriske biler er ikke med.
-        {r.competitive === false && " Støtten er over grensen Enova har godtatt i de siste rundene."}
+        {r.investment !== null && r.paybackYears === null ? NOT_PAID_BACK : PAYBACK_NOTE}
       </p>
+      <p className="kpi-note">{DIESEL_NOTE}</p>
     </div>
   );
 }

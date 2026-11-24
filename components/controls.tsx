@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 export function Slider({
   label,
@@ -89,5 +89,80 @@ export function Choice<T extends string>({
         ))}
       </div>
     </fieldset>
+  );
+}
+
+const parseNumber = (text: string) => {
+  const cleaned = text.replace(/[\s  ]/g, "").replace(",", ".");
+  if (cleaned === "" || cleaned === "." || cleaned === "-") return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Tallfelt som tåler desimalkomma og desimalpunkt («4,50» og «4.50») og
+ * mellomrom som tusenskille. Viser kundens tekst mens feltet er i bruk, og
+ * formaterer pent når feltet forlates. Tomt felt blir 0.
+ */
+export function NumberField({
+  label,
+  value,
+  onChange,
+  unit,
+  decimals = 0,
+  min = 0,
+  max = Number.MAX_SAFE_INTEGER,
+  hint,
+  compact,
+}: {
+  label: ReactNode;
+  value: number;
+  onChange: (v: number) => void;
+  unit?: string;
+  decimals?: number;
+  min?: number;
+  max?: number;
+  hint?: ReactNode;
+  compact?: boolean;
+}) {
+  const id = useId();
+  const format = (v: number) =>
+    v.toLocaleString("nb-NO", { minimumFractionDigits: decimals > 0 ? Math.min(2, decimals) : 0, maximumFractionDigits: decimals });
+  const [text, setText] = useState(() => format(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setText(format(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, focused]);
+
+  return (
+    <div className={`field number-field${compact ? " is-compact" : ""}`}>
+      <label htmlFor={id}>{label}</label>
+      <div className="number-input">
+        <input
+          id={id}
+          type="text"
+          inputMode={decimals > 0 ? "decimal" : "numeric"}
+          autoComplete="off"
+          value={text}
+          onFocus={() => setFocused(true)}
+          onChange={(e) => {
+            setText(e.target.value);
+            const n = parseNumber(e.target.value);
+            if (n !== null) onChange(Math.min(max, Math.max(min, n)));
+          }}
+          onBlur={() => {
+            setFocused(false);
+            const n = parseNumber(text);
+            const v = n === null ? Math.max(min, 0) : Math.min(max, Math.max(min, n));
+            onChange(v);
+            setText(format(v));
+          }}
+        />
+        {unit && <span className="unit">{unit}</span>}
+      </div>
+      {hint && <p className="field-hint">{hint}</p>}
+    </div>
   );
 }

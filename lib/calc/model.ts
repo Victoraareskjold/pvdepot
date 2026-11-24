@@ -1,262 +1,416 @@
-import { ASSUMPTIONS as A, VEHICLE_TYPES, solarCostPerKwp, type VehicleTypeId } from "./assumptions";
+import { ASSUMPTIONS as A, BATTERY_UNIT, SOLAR, STANDARD_PACKAGE as STD, VEHICLE_TYPES, type VehicleTypeId } from "./assumptions";
+
+/**
+ * Lønnsomhet ved bedriftslading (Asbjørn, 24.11.2026).
+ *
+ * Sammenligner det samme byggets strømregning før og etter prosjektet:
+ * inntekt fra ladesalg, strøm til laderne, verdien av solproduksjonen,
+ * batteritap, endring i effektledd og drift. Følger regnearket
+ * «Lonnsomhet-bedriftslading-7-batterier.xlsx» rad for rad. Ett resultat
+ * forsyner alle visninger: 3D-depotet, resultatkortene, «Se hele
+ * regnestykket» og sammendraget i skjemaet. Alle beløp eks. mva.
+ */
+
+export type SupportMode = "amount" | "score" | "none";
 
 export interface PlannerInput {
+  /* Økonomi */
+  /** Byggets årsforbruk i dag, uten nye ladere (kWh) */
+  buildingKwh: number;
+  /** Energi levert til kjøretøyene per år (kWh DC) */
+  deliveredKwh: number;
+  /** Andel av ladingen som faktureres andre (0–1). Resten er egne kjøretøy. */
+  billedShare: number;
+  /** Salgspris til andre, kr per kWh DC */
+  salePrice: number;
+
+  /* Utstyr */
+  chargers: number;
+  chargerKw: number;
+  solarKwp: number;
+  batteryUnits: number;
+
+  /* Enova */
+  supportMode: SupportMode;
+  /** Søkebeløp når supportMode = "amount" */
+  supportAmount: number;
+  /** Ønsket rangeringsscore, kr per kW, når supportMode = "score" */
+  supportScore: number;
+
+  /* Strøm og nettleie */
+  spotPrice: number;
+  energyFee: number;
+  elTax: number;
+  exportPrice: number;
+  powerFeeSummer: number;
+  powerFeeWinter: number;
+  peakBeforeKw: number;
+  peakUnmanagedKw: number;
+  peakManagedKw: number;
+  opex: number;
+
+  /* Frivillig hjelp til å anslå ladevolumet */
   vehicleType: VehicleTypeId;
-  /** Antall elektriske tunge kjøretøy som skal lade på depotet */
   vehicles: number;
-  /** Kjørelengde per kjøretøy per driftsdøgn */
   kmPerDay: number;
-  /** Timer kjøretøyet står på depotet og kan lade */
-  dwellHours: number;
-  /** Driftsdøgn per år */
   operatingDays: number;
-  /** Takflaten på bygget */
-  roofM2: number;
-  /** Andel av taket med solceller (0–1) */
-  solarCoverage: number;
-  /** Ledig effekt i dagens nettilknytning. null = vet ikke */
-  gridSpareKw: number | null;
-  /** Stasjonært batteri */
-  batteryKwh: number;
-  /** Støttegraden bedriften søker om (0–0,6). Lavere gir bedre rangering. */
-  /**
-   * Støttegraden bedriften søker om (0–0,6). null = automatisk: den høyeste
-   * som holder søknaden under grensen for kr per kW fra forrige runde.
-   */
-  supportRate: number | null;
 }
 
 export const DEFAULT_INPUT: PlannerInput = {
+  buildingKwh: 240_000,
+  deliveredKwh: 380_000,
+  billedShare: 1,
+  salePrice: 4.5,
+
+  chargers: STD.chargers,
+  chargerKw: STD.chargerKw,
+  solarKwp: STD.solarKwp,
+  batteryUnits: STD.batteryUnits,
+
+  supportMode: "amount",
+  supportAmount: STD.support,
+  supportScore: A.defaultScoreKrPerKw,
+
+  spotPrice: 0.88,
+  energyFee: 0.05,
+  elTax: 0.0713,
+  exportPrice: 0.6,
+  powerFeeSummer: 46,
+  powerFeeWinter: 111,
+  peakBeforeKw: 150,
+  peakUnmanagedKw: 650,
+  peakManagedKw: 300,
+  opex: 75_000,
+
   vehicleType: "distribusjon",
   vehicles: 6,
   kmPerDay: 220,
-  dwellHours: 10,
   operatingDays: 250,
-  roofM2: 3_000,
-  solarCoverage: 0.6,
-  gridSpareKw: null,
-  batteryKwh: 600,
-  supportRate: null,
 };
 
-export interface CostLine {
-  id: "chargers" | "grid" | "battery" | "solar";
+export interface AnnualLine {
+  id: "revenue" | "charging" | "solarBuilding" | "solarCharging" | "solarExport" | "batteryLoss" | "power" | "opex";
   label: string;
-  cost: number;
-  eligible: number;
+  /** Hvordan posten er regnet, med kundens tall */
+  how: string;
+  value: number;
 }
 
 export interface PlannerResult {
+  /** Utstyret er standardpakken med bekreftet totalpris */
+  standardPackage: boolean;
   vehicle: (typeof VEHICLE_TYPES)[number];
-  dailyKwhPerVehicle: number;
-  requiredKwPerVehicle: number;
-  chargerKw: number;
-  chargePoints: number;
-  /** Sum merkeeffekt for laderne */
+
   nameplateKw: number;
-  /** Effekten som trengs når lading fordeles jevnt over ståtiden */
-  managedPeakKw: number;
-  /**
-   * Samlet ladeeffekt Enova regner med: effekten med laststyring (det
-   * anlegget faktisk leverer samtidig), ikke summen av alle laderne.
-   */
-  availableKw: number;
+  batteryKwh: number;
   batteryKw: number;
-  gridDeficitKw: number;
-  solarKwp: number;
+  /** Tilgjengelig samtidig DC-effekt i én time (det Enova rangerer på) */
+  availableKw: number;
+  /** Batteriets bidrag når alle laderne går for fullt (kW AC) */
+  batteryAssistKw: number;
 
-  costs: CostLine[];
-  totalCost: number;
-  eligibleCost: number;
-  maxSupport: number;
-  /** Støttegraden som faktisk er brukt (automatisk eller valgt) */
-  supportRate: number;
-  supportAuto: boolean;
-  /** Under grensen for kr per kW fra forrige runde (null = ukjent grense) */
-  competitive: boolean | null;
+  /** null = investeringspris må avklares (utstyr uten pris) */
+  investment: number | null;
+  eligibleCost: number | null;
   support: number;
-  supportCapped: boolean;
+  /** Støtte delt på godkjent kostnad */
+  supportRate: number | null;
   krPerKw: number;
-  netInvestment: number;
+  supportLimitedBy: "cap" | "rate" | null;
+  netInvestment: number | null;
 
-  annual: {
-    chargingKwh: number;
-    electricityCost: number;
-    dieselLiters: number;
-    dieselCost: number;
-    fuelSaving: number;
+  energy: {
+    marginalPrice: number;
+    chargerAcKwh: number;
+    billedKwh: number;
+    ownKwh: number;
     solarKwh: number;
-    solarValue: number;
-    /** Solproduksjon målt mot ladebehovet (ikke samtidighet) */
-    solarShareOfCharging: number;
-    peakSaving: number;
-    totalSaving: number;
-    co2Tonnes: number;
+    solarBuildingKwh: number;
+    solarDirectChargingKwh: number;
+    solarToBatteryKwh: number;
+    /** Sol til lading, direkte og via batteriet etter tap */
+    solarChargingKwh: number;
+    solarExportKwh: number;
+    solarBatteryLossKwh: number;
+    gridBatteryKwh: number;
+    gridBatteryLossKwh: number;
+    gridPurchaseKwh: number;
   };
+
+  power: {
+    feePerKwYear: number;
+    peakAfterKw: number;
+    beforeCost: number;
+    unmanagedCost: number;
+    managedCost: number;
+    /** Det styringen sparer mot ustyrt lading */
+    controlSaving: number;
+  };
+
+  lines: AnnualLine[];
+  annualNet: number;
+  /** Enkel tilbakebetaling ved fullt ladesalg fra år 1. null = ikke tjent inn eller pris ukjent */
   paybackYears: number | null;
-  /** Besparelse over analyseperioden minus egen investering */
-  netSavingPeriod: number;
+
+  rampUp: { years: number[]; paybackYears: number | null };
   periodYears: number;
-  /** Besparelse per år delt på egen investering (enkel avkastning) */
-  annualReturn: number | null;
-  warnings: Warning[];
+  /** Akkumulert netto etter investering over perioden, fullt volum fra år 1 */
+  netAfterPeriod: number | null;
 }
 
-export type Warning =
-  | { id: "dwell-too-short"; neededKw: number }
-  | { id: "support-capped" }
-  | { id: "grid-unknown" }
-  | { id: "grid-upgrade"; deficitKw: number };
-
+/** Minus uten «−0» i visningen. */
+const neg = (v: number) => (v === 0 ? 0 : -v);
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+/** Tall fra skjema kan være tomme eller rare. Ingen NaN eller negative mengder videre. */
+const num = (v: number, min = 0, max = Number.MAX_SAFE_INTEGER) => (Number.isFinite(v) ? clamp(v, min, max) : min);
 
-export function pickChargerKw(requiredKw: number): number {
-  const sizes = A.chargerSizesKw;
-  return sizes.find((s) => s >= requiredKw) ?? sizes[sizes.length - 1];
+export function isStandardPackage(i: Pick<PlannerInput, "chargers" | "chargerKw" | "solarKwp" | "batteryUnits">) {
+  return (
+    i.chargers === STD.chargers &&
+    i.chargerKw === STD.chargerKw &&
+    i.solarKwp === STD.solarKwp &&
+    i.batteryUnits === STD.batteryUnits
+  );
 }
 
-export function calculate(input: PlannerInput): PlannerResult {
-  const vehicle = VEHICLE_TYPES.find((v) => v.id === input.vehicleType) ?? VEHICLE_TYPES[0];
-  const vehicles = Math.max(0, Math.round(input.vehicles));
-  const dwell = clamp(input.dwellHours, 1, 24);
-  const warnings: Warning[] = [];
+/** Pris for valgt utstyr: standardpakken, eller standardpakken pluss prisforskjell. */
+export function packagePrice(i: Pick<PlannerInput, "chargers" | "chargerKw" | "solarKwp" | "batteryUnits">): number | null {
+  if (isStandardPackage(i)) return STD.price;
+  const p = A.componentPrices;
+  if (!p) return null;
+  const chargerDelta =
+    (i.chargers - STD.chargers) * p.perCharger + (i.chargers * i.chargerKw - STD.chargers * STD.chargerKw) * p.perChargerKw;
+  const price =
+    STD.price +
+    chargerDelta +
+    (i.solarKwp - STD.solarKwp) * p.perSolarKwp +
+    (i.batteryUnits - STD.batteryUnits) * p.perBatteryUnit;
+  return Math.max(0, price);
+}
 
-  // Ladebehov
-  const dailyKwhPerVehicle = (input.kmPerDay * vehicle.kWhPerKm) / A.chargingEfficiency;
-  const requiredKwPerVehicle = dailyKwhPerVehicle / dwell;
-  const chargerKw = pickChargerKw(requiredKwPerVehicle);
-  if (requiredKwPerVehicle > chargerKw) {
-    warnings.push({ id: "dwell-too-short", neededKw: Math.ceil(requiredKwPerVehicle) });
-  }
+/** Ladevolum anslått fra kjøretøyene (energi levert til bilene, kWh DC per år). */
+export function estimateDeliveredKwh(i: Pick<PlannerInput, "vehicleType" | "vehicles" | "kmPerDay" | "operatingDays">) {
+  const v = VEHICLE_TYPES.find((t) => t.id === i.vehicleType) ?? VEHICLE_TYPES[0];
+  return num(i.vehicles) * num(i.kmPerDay) * num(i.operatingDays, 0, 366) * v.kWhPerKm;
+}
 
-  const chargePoints = vehicles;
-  const nameplateKw = chargePoints * chargerKw;
-  // Med laststyring trenger ikke alle laderne full effekt samtidig.
-  const managedPeakKw = Math.min(nameplateKw, chargePoints * requiredKwPerVehicle);
+/** Andel av strømmen på AC-siden som går til laderne (første slider). */
+export function chargingShare(i: Pick<PlannerInput, "buildingKwh" | "deliveredKwh">): number {
+  const ac = num(i.buildingKwh) + num(i.deliveredKwh) / A.chargerEfficiency;
+  return ac > 0 ? num(i.deliveredKwh) / A.chargerEfficiency / ac : 0;
+}
 
-  // Batteri og nett
-  const batteryKw = input.batteryKwh * A.batteryCRate;
-  const gridKnown = input.gridSpareKw !== null;
-  const gridSpare = input.gridSpareKw ?? 0;
+/**
+ * Flytter fordelingen mellom bygg og lading og holder summen på AC-siden
+ * fast: ACsum = bygg + levertDC / 0,95.
+ */
+export function withChargingShare(i: PlannerInput, share: number): PlannerInput {
+  const s = clamp(share, 0, 1);
+  const ac = num(i.buildingKwh) + num(i.deliveredKwh) / A.chargerEfficiency;
+  return { ...i, buildingKwh: ac * (1 - s), deliveredKwh: ac * s * A.chargerEfficiency };
+}
 
-  let gridDeficitKw = 0;
-  // Enova rangerer på kr per kW samtidig ladeeffekt, altså med laststyring.
-  const availableKw = managedPeakKw;
-  let batteryNeededKw = 0;
+export function calculate(raw: PlannerInput): PlannerResult {
+  const i = {
+    ...raw,
+    buildingKwh: num(raw.buildingKwh),
+    deliveredKwh: num(raw.deliveredKwh),
+    billedShare: num(raw.billedShare, 0, 1),
+    salePrice: num(raw.salePrice),
+    chargers: Math.round(num(raw.chargers, 0, 100)),
+    chargerKw: num(raw.chargerKw),
+    solarKwp: num(raw.solarKwp),
+    batteryUnits: Math.round(num(raw.batteryUnits, 0, 100)),
+    supportAmount: num(raw.supportAmount),
+    supportScore: num(raw.supportScore),
+    spotPrice: num(raw.spotPrice),
+    energyFee: num(raw.energyFee),
+    elTax: num(raw.elTax),
+    exportPrice: num(raw.exportPrice),
+    powerFeeSummer: num(raw.powerFeeSummer),
+    powerFeeWinter: num(raw.powerFeeWinter),
+    peakBeforeKw: num(raw.peakBeforeKw),
+    peakUnmanagedKw: num(raw.peakUnmanagedKw),
+    peakManagedKw: num(raw.peakManagedKw),
+    opex: num(raw.opex),
+  };
+  const vehicle = VEHICLE_TYPES.find((v) => v.id === i.vehicleType) ?? VEHICLE_TYPES[0];
+  const effC = A.chargerEfficiency;
+  const effB = A.batteryRoundTrip;
 
-  if (gridKnown) {
-    batteryNeededKw = Math.max(0, managedPeakKw - gridSpare);
-    gridDeficitKw = Math.max(0, managedPeakKw - batteryKw - gridSpare);
-    if (gridDeficitKw > 0) warnings.push({ id: "grid-upgrade", deficitKw: Math.ceil(gridDeficitKw) });
-  } else if (vehicles > 0) {
-    warnings.push({ id: "grid-unknown" });
-  }
+  // Effekt: alle laderne på full last i én time, dekket av nett og batteri.
+  const nameplateKw = i.chargers * i.chargerKw;
+  const batteryKwh = i.batteryUnits * BATTERY_UNIT.kwh;
+  const batteryKw = i.batteryUnits * BATTERY_UNIT.kw;
+  const batteryHourKw = Math.min(batteryKw, batteryKwh / 1);
+  const availableKw = Math.min(nameplateKw, Math.max(0, (i.peakManagedKw - i.peakBeforeKw + batteryHourKw) * effC));
+  const batteryAssistKw = Math.max(0, nameplateKw / effC + i.peakBeforeKw - i.peakManagedKw);
 
-  // Sol
-  const solarKwp = input.roofM2 * clamp(input.solarCoverage, 0, 1) * A.solarKwpPerCoveredM2;
+  // Investering og støtte
+  const investment = packagePrice(i);
+  const eligibleCost = investment === null ? null : investment * A.eligibleShare;
+  const caps = [A.enovaMaxSupport, eligibleCost === null ? Infinity : eligibleCost * A.enovaMaxRate];
+  const wanted = i.supportMode === "none" ? 0 : i.supportMode === "score" ? i.supportScore * availableKw : i.supportAmount;
+  const support = Math.max(0, Math.min(wanted, ...caps));
+  const supportLimitedBy = wanted > support ? (caps[0] <= caps[1] ? "cap" : "rate") : null;
+  const supportRate = eligibleCost && eligibleCost > 0 ? support / eligibleCost : null;
+  const krPerKw = availableKw > 0 ? support / availableKw : 0;
+  const netInvestment = investment === null ? null : investment - support;
 
-  // Kostnader
-  const chargersCost = chargePoints * (A.chargePointFixedCost + chargerKw * A.chargerCostPerKw);
-  const gridCost = gridDeficitKw > 0 ? A.gridUpgradeFixedCost + gridDeficitKw * A.gridUpgradeCostPerKw : 0;
-  const batteryCost = input.batteryKwh > 0 ? A.batteryFixedCost + input.batteryKwh * A.batteryCostPerKwh : 0;
-  const solarCost = solarKwp > 0 ? solarKwp * solarCostPerKwp(solarKwp) : 0;
+  // Energi
+  const marginalPrice = i.spotPrice + i.energyFee + i.elTax;
+  const chargerAcKwh = i.deliveredKwh / effC;
+  const billedKwh = i.deliveredKwh * i.billedShare;
+  const ownKwh = i.deliveredKwh - billedKwh;
 
-  const batteryEligibleShare =
-    A.batteryEligibleWhenNeeded && batteryKw > 0 ? Math.min(batteryKw, batteryNeededKw) / batteryKw : 0;
+  const solarKwh = (i.solarKwp * SOLAR.refKwh) / SOLAR.refKwp;
+  const hasBattery = i.batteryUnits > 0;
+  // Fordelingen begrenses av behovet: byggsol til bygget, ladesol til laderne,
+  // og sol inn på batteriet bare så langt utladingen dekker resten av ladebehovet.
+  const solarBuildingKwh = Math.min(solarKwh * SOLAR.toBuilding, i.buildingKwh);
+  const solarDirectChargingKwh = Math.min(solarKwh * SOLAR.toChargers, chargerAcKwh);
+  const solarToBatteryKwh = hasBattery
+    ? Math.min(solarKwh * SOLAR.toBattery, (chargerAcKwh - solarDirectChargingKwh) / effB)
+    : 0;
+  const solarChargingKwh = solarDirectChargingKwh + solarToBatteryKwh * effB;
+  const solarExportKwh = solarKwh - solarBuildingKwh - solarDirectChargingKwh - solarToBatteryKwh;
+  const solarBatteryLossKwh = solarToBatteryKwh * (1 - effB);
 
-  const costs: CostLine[] = [
-    { id: "chargers", label: "Ladere og montering", cost: chargersCost, eligible: chargersCost },
+  // Kjøpt strøm via batteriet skaleres med ladevolumet og batteripakken,
+  // og begrenses av ladebehovet som gjenstår etter sol.
+  const gridBatteryKwh = hasBattery
+    ? Math.min(
+        A.gridBatteryRefKwh * (i.deliveredKwh / A.gridBatteryRefDeliveredKwh) * (i.batteryUnits / STD.batteryUnits),
+        Math.max(0, chargerAcKwh - solarChargingKwh) / effB,
+      )
+    : 0;
+  const gridBatteryLossKwh = gridBatteryKwh * (1 - effB);
+  const gridPurchaseKwh = i.buildingKwh + chargerAcKwh - solarBuildingKwh - solarChargingKwh + gridBatteryLossKwh;
+
+  // Effektledd: samme topp hver måned, seks sommer- og seks vintermåneder.
+  const feePerKwYear = 6 * (i.powerFeeSummer + i.powerFeeWinter);
+  const charging = i.deliveredKwh > 0 && i.chargers > 0;
+  const peakAfterKw = charging ? i.peakManagedKw : i.peakBeforeKw;
+  const power = {
+    feePerKwYear,
+    peakAfterKw,
+    beforeCost: i.peakBeforeKw * feePerKwYear,
+    unmanagedCost: i.peakUnmanagedKw * feePerKwYear,
+    managedCost: i.peakManagedKw * feePerKwYear,
+    controlSaving: (i.peakUnmanagedKw - i.peakManagedKw) * feePerKwYear,
+  };
+
+  const k = (n: number) => Math.round(n).toLocaleString("nb-NO");
+  const p = (n: number) => n.toLocaleString("nb-NO", { maximumFractionDigits: 4 });
+  const pc = (n: number) => `${(n * 100).toLocaleString("nb-NO", { maximumFractionDigits: 1 })} %`;
+  const lines: AnnualLine[] = [
     {
-      id: "grid",
-      label: "Nettforsterkning",
-      cost: gridCost,
-      eligible: A.gridUpgradeEligible ? gridCost : 0,
+      id: "revenue",
+      label: "Fakturert lading",
+      how: `${k(billedKwh)} kWh × ${p(i.salePrice)} kr`,
+      value: billedKwh * i.salePrice,
     },
-    { id: "battery", label: "Batteri", cost: batteryCost, eligible: batteryCost * batteryEligibleShare },
-    { id: "solar", label: "Solceller", cost: solarCost, eligible: A.solarEligible ? solarCost : 0 },
+    {
+      id: "charging",
+      label: "Strøm til laderne før bidrag fra sol",
+      how: `${k(i.deliveredKwh)} kWh / ${p(effC)} × ${p(marginalPrice)} kr`,
+      value: neg(chargerAcKwh * marginalPrice),
+    },
+    {
+      id: "solarBuilding",
+      label: "Solstrøm direkte brukt i bygget",
+      how: `${k(solarBuildingKwh)} kWh × ${p(marginalPrice)} kr`,
+      value: solarBuildingKwh * marginalPrice,
+    },
+    {
+      id: "solarCharging",
+      label: "Solstrøm brukt til lading",
+      how: `${k(solarChargingKwh)} kWh direkte og via batteriet × ${p(marginalPrice)} kr`,
+      value: solarChargingKwh * marginalPrice,
+    },
+    {
+      id: "solarExport",
+      label: "Soloverskudd solgt til nettet",
+      how: `${k(solarExportKwh)} kWh × ${p(i.exportPrice)} kr`,
+      value: solarExportKwh * i.exportPrice,
+    },
+    {
+      id: "batteryLoss",
+      label: "Tap på kjøpt strøm gjennom batteriet",
+      how: `${k(gridBatteryKwh)} kWh × ${pc(1 - effB)} × ${p(marginalPrice)} kr`,
+      value: neg(gridBatteryLossKwh * marginalPrice),
+    },
+    {
+      id: "power",
+      label: "Endring i effektledd fra dagens bygg",
+      how: `(${k(i.peakBeforeKw)} − ${k(peakAfterKw)} kW) × ${k(feePerKwYear)} kr per kW og år`,
+      value: (i.peakBeforeKw - peakAfterKw) * feePerKwYear,
+    },
+    { id: "opex", label: "Drift og service", how: "Service, programvare, forsikring og løpende drift", value: neg(i.opex) },
   ];
 
-  const totalCost = sum(costs.map((c) => c.cost));
-  const eligibleCost = sum(costs.map((c) => c.eligible));
-  // Automatisk: søk så mye som mulig, men under grensen (med 5 % margin).
-  const target = A.enovaHistoricalCutoffKrPerKw !== null ? A.enovaHistoricalCutoffKrPerKw * 0.95 : null;
-  const autoRate =
-    target !== null && eligibleCost > 0 ? clamp((target * availableKw) / eligibleCost, 0, A.enovaMaxRate) : A.enovaMaxRate;
-  const rate = clamp(input.supportRate ?? autoRate, 0, A.enovaMaxRate);
-  const uncappedMax = eligibleCost * A.enovaMaxRate;
-  const maxSupport = Math.min(uncappedMax, A.enovaMaxSupport);
-  const support = Math.min(eligibleCost * rate, A.enovaMaxSupport);
-  const supportCapped = uncappedMax > A.enovaMaxSupport;
-  if (supportCapped) warnings.push({ id: "support-capped" });
-  const krPerKw = availableKw > 0 ? support / availableKw : 0;
+  const annualNet = lines.reduce((s, l) => s + l.value, 0);
+  const paybackYears = netInvestment !== null && annualNet > 0 ? Math.max(0, netInvestment) / annualNet : null;
 
-  // Drift per år
-  const km = vehicles * input.kmPerDay * input.operatingDays;
-  const chargingKwh = (km * vehicle.kWhPerKm) / A.chargingEfficiency;
-  const electricityCost = chargingKwh * A.electricityPrice;
-  const dieselLiters = km * vehicle.dieselLPerKm;
-  const dieselCost = dieselLiters * A.dieselPrice;
-  const fuelSaving = dieselCost - electricityCost;
+  // Gradvis oppstart: salg og volumavhengige energikostnader følger opptrappingen.
+  const volumeDependent = lines
+    .filter((l) => l.id === "revenue" || l.id === "charging" || l.id === "batteryLoss")
+    .reduce((s, l) => s + l.value, 0);
+  const years = [...A.rampUp.map((f) => annualNet - volumeDependent * (1 - f)), annualNet];
+  const rampUp = { years, paybackYears: netInvestment === null ? null : rampPayback(Math.max(0, netInvestment), years) };
 
-  const solarKwh = solarKwp * A.solarYieldKwhPerKwp;
-  const solarValue = solarKwh * (A.solarSelfUse * A.electricityPrice + (1 - A.solarSelfUse) * A.exportPrice);
-  const solarShareOfCharging = chargingKwh > 0 ? Math.min(1, solarKwh / chargingKwh) : 0;
-
-  const peakSaving = Math.min(batteryKw, managedPeakKw) * A.demandChargePerKwMonth * 12;
-  const totalSaving = fuelSaving + solarValue + peakSaving;
-  const co2Tonnes = (dieselLiters * A.co2KgPerLiterDiesel) / 1000;
-
-  const netInvestment = totalCost - support;
-  const paybackYears = totalSaving > 0 && netInvestment > 0 ? netInvestment / totalSaving : null;
   const periodYears = A.analysisYears;
-  const netSavingPeriod = totalSaving * periodYears - netInvestment;
-  const annualReturn = netInvestment > 0 ? totalSaving / netInvestment : null;
+  const netAfterPeriod = netInvestment === null ? null : annualNet * periodYears - netInvestment;
 
   return {
+    standardPackage: isStandardPackage(i),
     vehicle,
-    dailyKwhPerVehicle,
-    requiredKwPerVehicle,
-    chargerKw,
-    chargePoints,
     nameplateKw,
-    managedPeakKw,
-    availableKw,
+    batteryKwh,
     batteryKw,
-    gridDeficitKw,
-    solarKwp,
-    costs,
-    totalCost,
+    availableKw,
+    batteryAssistKw,
+    investment,
     eligibleCost,
-    maxSupport,
-    supportRate: rate,
-    supportAuto: input.supportRate === null,
-    competitive:
-      A.enovaHistoricalCutoffKrPerKw === null ? null : krPerKw <= A.enovaHistoricalCutoffKrPerKw,
     support,
-    supportCapped,
+    supportRate,
     krPerKw,
+    supportLimitedBy,
     netInvestment,
-    annual: {
-      chargingKwh,
-      electricityCost,
-      dieselLiters,
-      dieselCost,
-      fuelSaving,
+    energy: {
+      marginalPrice,
+      chargerAcKwh,
+      billedKwh,
+      ownKwh,
       solarKwh,
-      solarValue,
-      solarShareOfCharging,
-      peakSaving,
-      totalSaving,
-      co2Tonnes,
+      solarBuildingKwh,
+      solarDirectChargingKwh,
+      solarToBatteryKwh,
+      solarChargingKwh,
+      solarExportKwh,
+      solarBatteryLossKwh,
+      gridBatteryKwh,
+      gridBatteryLossKwh,
+      gridPurchaseKwh,
     },
+    power,
+    lines,
+    annualNet,
     paybackYears,
-    netSavingPeriod,
+    rampUp,
     periodYears,
-    annualReturn,
-    warnings,
+    netAfterPeriod,
   };
 }
 
-function sum(values: number[]): number {
-  return values.reduce((a, b) => a + b, 0);
+/** År til investeringen er tjent inn med opptrapping de første årene (jevn opptjening innen året). */
+function rampPayback(inv: number, years: number[]): number | null {
+  let acc = 0;
+  for (let y = 0; y < years.length - 1; y++) {
+    if (years[y] > 0 && acc + years[y] >= inv) return y + (inv - acc) / years[y];
+    acc += years[y];
+  }
+  const last = years[years.length - 1];
+  if (last <= 0) return null;
+  return years.length - 1 + Math.max(0, inv - acc) / last;
 }
