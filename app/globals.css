@@ -109,25 +109,6 @@ textarea {
   padding: 56px 0 28px;
 }
 
-.hook-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 22px;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.hook-brand > span:last-child {
-  font-weight: 500;
-  color: var(--ink-2);
-}
-
-.brand-logo {
-  width: auto;
-  height: 44px;
-}
-
 .hook h1 {
   margin: 0 0 20px;
   font-size: clamp(32px, 4.6vw, 58px);
@@ -1427,14 +1408,6 @@ input[type="range"]::-moz-range-thumb {
   padding: 72px 0 72px;
 }
 
-.brand-logo {
-  height: 56px;
-}
-
-.hook-brand {
-  margin-bottom: 40px;
-}
-
 .hook-lede {
   font-size: 19px;
   max-width: 54ch;
@@ -1736,12 +1709,6 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 899px) {
   .hook {
     padding: 36px 0 44px;
-  }
-  .brand-logo {
-    height: 44px;
-  }
-  .hook-brand {
-    margin-bottom: 28px;
   }
   .hook-lede {
     font-size: 16.5px;

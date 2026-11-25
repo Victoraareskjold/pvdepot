@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
 import { qualify, setAnswer, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
@@ -14,7 +13,8 @@ import { Assumptions, CalcControls, MainSliders, Check, CheckStep, Equipment, In
 import { DeadlineText, useDeadline } from "./Deadline";
 
 /**
- * Siden, ovenfra og ned (Smart Elektro, 19.11.2026):
+ * Siden, ovenfra og ned (Smart Elektro, 19.11.2026; logoen fjernet 25.11.2026,
+ * den står i menyen på pvwebsites):
  * rolig topp med én handling (hjelp med Enova-søknaden), 3D-depotet med
  * slidere og tre nøkkeltall ved siden av, hvordan vi hjelper med søknaden,
  * bildekarusell, støttesjekk og skjema. En svevende knapp holder
@@ -63,16 +63,6 @@ export default function Experience({ theme, deadlines }: { theme: SiteTheme; dea
       style={{ ["--accent" as string]: theme.accent, ["--energy" as string]: theme.energy }}
     >
       <header className="hook wrap">
-        <p className="hook-brand">
-          <Image
-            className="brand-logo"
-            src={theme.logo.src}
-            alt={`${theme.name} Lading`}
-            width={theme.logo.width}
-            height={theme.logo.height}
-            priority
-          />
-        </p>
         <h1>
           <span>Lading for elektriske tunge kjøretøy.</span>
           <span>Enova betaler inntil 60 %.</span>
