@@ -2,18 +2,15 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { calculate, DEFAULT_INPUT, estimateDeliveredKwh, type PlannerInput } from "@/lib/calc/model";
+import { calculate, DEFAULT_INPUT, type PlannerInput } from "@/lib/calc/model";
 import { qualify, setAnswer, DEFAULT_ANSWERS, type QualifyAnswers } from "@/lib/calc/qualify";
 import type { DeadlineInfo } from "@/lib/calc/deadlines";
-import { VEHICLE_TYPES } from "@/lib/calc/assumptions";
-import { int } from "@/lib/format";
 import type { SiteTheme } from "@/lib/sites";
 import LeadForm from "./LeadForm";
 import KeyFigures from "./KeyFigures";
 import ScrollWorld from "./ScrollWorld";
 import Carousel from "./Carousel";
-import { Choice, Slider } from "./controls";
-import { Assumptions, CalcControls, Check, CheckStep, Equipment, Investment, Operation, PowerAndEnergy } from "./sections";
+import { Assumptions, CalcControls, MainSliders, Check, CheckStep, Equipment, Investment, Operation, PowerAndEnergy } from "./sections";
 import { DeadlineText, useDeadline } from "./Deadline";
 
 /**
@@ -37,94 +34,13 @@ export default function Experience({ theme, deadlines }: { theme: SiteTheme; dea
   const answer = (id: string, value: string) => setAnswers((prev) => setAnswer(prev, id, value));
 
   const deadline = useDeadline(deadlines);
-  const estimate = estimateDeliveredKwh(input);
 
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const panel = (
     <>
       <h2 className="tuner-title">Tilpass til depotet deres</h2>
-      <Slider
-        label="Lading levert til kjøretøy"
-        value={input.deliveredKwh}
-        min={0}
-        max={1_500_000}
-        step={10_000}
-        unit="kWh per år"
-        format={int}
-        onChange={(v) => set("deliveredKwh", v)}
-      />
-      <Slider
-        label="Salgspris til andre"
-        value={input.salePrice}
-        min={0}
-        max={8}
-        step={0.05}
-        unit="kr/kWh"
-        format={(v) => v.toLocaleString("nb-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        onChange={(v) => set("salePrice", v)}
-      />
-      <Slider
-        label="Salg til andre"
-        value={Math.round(input.billedShare * 1000) / 10}
-        min={0}
-        max={100}
-        step={5}
-        unit="%"
-        format={(v) => v.toLocaleString("nb-NO", { maximumFractionDigits: 1 })}
-        onChange={(v) => set("billedShare", v / 100)}
-        hint={input.billedShare < 1 ? "Resten lader egne kjøretøy og gir ingen salgsinntekt." : undefined}
-      />
-      <Slider
-        label="Byggets årsforbruk i dag"
-        value={input.buildingKwh}
-        min={0}
-        max={1_500_000}
-        step={10_000}
-        unit="kWh"
-        format={int}
-        onChange={(v) => set("buildingKwh", v)}
-      />
-      <details className="more">
-        <summary>Anslå ladevolum fra kjøretøy</summary>
-        <div className="more-body">
-          <Choice
-            label="Type kjøretøy"
-            value={input.vehicleType}
-            onChange={(v) => set("vehicleType", v)}
-            columns={2}
-            options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label }))}
-          />
-          <Slider label="Kjøretøy som lader" value={input.vehicles} min={1} max={40} step={1} onChange={(v) => set("vehicles", v)} />
-          <Slider
-            label="Kjørelengde per kjøretøy"
-            value={input.kmPerDay}
-            min={30}
-            max={700}
-            step={10}
-            unit="km per dag"
-            onChange={(v) => set("kmPerDay", v)}
-          />
-          <Slider
-            label="Driftsdøgn"
-            value={input.operatingDays}
-            min={150}
-            max={365}
-            step={5}
-            unit="per år"
-            onChange={(v) => set("operatingDays", v)}
-          />
-          <p className="derived">Gir omtrent {int(estimate)} kWh levert i året.</p>
-          <button
-            type="button"
-            className="btn btn-ghost btn-small"
-            disabled={Math.round(estimate) === Math.round(input.deliveredKwh)}
-            onClick={() => set("deliveredKwh", Math.round(estimate))}
-          >
-            Bruk dette ladevolumet
-          </button>
-        </div>
-      </details>
+      <MainSliders input={input} result={result} set={set} />
       <KeyFigures result={result} />
       <button
         type="button"

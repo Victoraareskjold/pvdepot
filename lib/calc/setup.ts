@@ -25,7 +25,7 @@ const supportLabel = (i: PlannerInput) =>
   i.supportMode === "none"
     ? "Ingen støtte"
     : i.supportMode === "score"
-      ? `Fra ønsket score (${int(i.supportScore)} kr/kW)`
+      ? `DC-ladeeffekt × ${int(i.supportScore)} kr/kW`
       : `Søkebeløp ${krExact(i.supportAmount)}`;
 
 export const SETUP_FIELDS: Field[] = [
@@ -116,10 +116,13 @@ export function describeSetup(input: PlannerInput, r: PlannerResult, defaults: P
   );
   lines.push(`  Investering: ${r.investment === null ? "må avklares (utstyr uten pris)" : krExact(r.investment)}`);
   lines.push(
-    `  Enova-støtte: ${krExact(r.support)} (${int(r.krPerKw)} kr/kW${r.supportRate !== null ? `, ${nb(r.supportRate * 100, 1)} % støttegrad` : ""})`,
+    `  Enova-støtte: ${krExact(r.support)} (laveste av ${krExact(r.supportBasis.requested)}, ${krExact(r.supportBasis.cap)}` +
+      `${r.supportBasis.rateCap !== null ? ` og 60 % av totalsummen ${krExact(r.supportBasis.rateCap)}` : ""}` +
+      `${r.supportRate !== null ? `; ${nb(r.supportRate * 100, 1)} % støttegrad` : ""})`,
   );
   if (r.netInvestment !== null) lines.push(`  Egen investering: ${krExact(r.netInvestment)}`);
   lines.push(`  Årlig netto før renter og skatt: ${krExact(r.annualNet)}`);
+  if (r.netAfterPeriod !== null) lines.push(`  Netto over ${r.periodYears} år etter investering: ${krExact(r.netAfterPeriod)}`);
   lines.push(
     `  Tilbakebetaling ved fullt ladesalg: ${
       r.investment === null ? "pris må avklares" : r.paybackYears === null ? "tjenes ikke inn" : `${years(r.paybackYears)} år`

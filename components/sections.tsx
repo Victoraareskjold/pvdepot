@@ -1,9 +1,10 @@
 "use client";
 
-import { ASSUMPTIONS, BATTERY_UNIT, SOLAR, STANDARD_PACKAGE } from "@/lib/calc/assumptions";
+import { ASSUMPTIONS, BATTERY_UNIT, SOLAR, STANDARD_PACKAGE, VEHICLE_TYPES } from "@/lib/calc/assumptions";
 import {
   chargingShare,
   DEFAULT_INPUT,
+  estimateDeliveredKwh,
   withChargingShare,
   type PlannerInput,
   type PlannerResult,
@@ -42,6 +43,8 @@ export const word = (n: number) => WORDS[n] ?? String(n);
 const nb = (n: number, max = 2, min = 0) =>
   n.toLocaleString("nb-NO", { maximumFractionDigits: max, minimumFractionDigits: min });
 const kwh = (n: number) => `${int(n)} kWh`;
+/** «1 238 964 kr» eller «− 471 036 kr» */
+export const signedKr = (v: number) => (v < 0 ? `− ${krExact(-v)}` : krExact(v));
 const pcText = (v: number) => `${nb(v, 1)} %`;
 
 /** Utstyret i én setning, for investeringsteksten og depotet. */
@@ -107,6 +110,110 @@ function choiceColumns(options: { label: string }[]) {
   if (longest > 26) return 1;
   if (longest > 12 || options.length > 3) return 2;
   return options.length;
+}
+
+/* ---------------- Hovedvisningen ---------------- */
+
+/** De fire sliderne ved depotet (Victor, 25.11.2026). Alt annet ligger i regnestykket. */
+export function MainSliders({ input, result: r, set }: { input: PlannerInput; result: PlannerResult; set: Setter }) {
+  const step = input.chargerKw || STANDARD_PACKAGE.chargerKw;
+  return (
+    <>
+      <Slider
+        label="Samlet DC-ladeeffekt"
+        value={r.nameplateKw}
+        min={step}
+        max={step * 12}
+        step={step}
+        unit="kW"
+        format={int}
+        onChange={(v) => set("chargers", Math.max(1, Math.round(v / step)))}
+        hint={`${input.chargers} ${input.chargers === 1 ? "lader" : "ladere"} på ${int(step)} kW`}
+      />
+      <Slider
+        label="Størrelse på solcelleanlegget"
+        value={input.solarKwp}
+        min={0}
+        max={600}
+        step={1}
+        unit="kWp"
+        format={int}
+        onChange={(v) => set("solarKwp", v)}
+      />
+      <Slider
+        label="Batterikapasitet"
+        value={r.batteryKwh}
+        min={0}
+        max={BATTERY_UNIT.kwh * 14}
+        step={BATTERY_UNIT.kwh}
+        unit="kWh"
+        format={int}
+        onChange={(v) => set("batteryUnits", Math.round(v / BATTERY_UNIT.kwh))}
+        hint={
+          input.batteryUnits > 0
+            ? `${input.batteryUnits} ${input.batteryUnits === 1 ? "enhet" : "enheter"} på ${BATTERY_UNIT.kwh} kWh`
+            : "Uten batteri"
+        }
+      />
+      <Slider
+        label="Salgspris for lading av lastebiler"
+        value={input.salePrice}
+        min={0}
+        max={8}
+        step={0.05}
+        unit="kr/kWh"
+        format={(v) => nb(v, 2, 2)}
+        onChange={(v) => set("salePrice", v)}
+      />
+    </>
+  );
+}
+
+/** Frivillig hjelp til å anslå ladevolumet fra kjøretøyene. */
+export function VolumeHelper({ input, set }: { input: PlannerInput; set: Setter }) {
+  const estimate = estimateDeliveredKwh(input);
+  return (
+      <details className="more">
+        <summary>Anslå ladevolum fra kjøretøy</summary>
+        <div className="more-body">
+          <Choice
+            label="Type kjøretøy"
+            value={input.vehicleType}
+            onChange={(v) => set("vehicleType", v)}
+            columns={2}
+            options={VEHICLE_TYPES.map((v) => ({ value: v.id, label: v.label }))}
+          />
+          <Slider label="Kjøretøy som lader" value={input.vehicles} min={1} max={40} step={1} onChange={(v) => set("vehicles", v)} />
+          <Slider
+            label="Kjørelengde per kjøretøy"
+            value={input.kmPerDay}
+            min={30}
+            max={700}
+            step={10}
+            unit="km per dag"
+            onChange={(v) => set("kmPerDay", v)}
+          />
+          <Slider
+            label="Driftsdøgn"
+            value={input.operatingDays}
+            min={150}
+            max={365}
+            step={5}
+            unit="per år"
+            onChange={(v) => set("operatingDays", v)}
+          />
+          <p className="derived">Gir omtrent {int(estimate)} kWh levert i året.</p>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            disabled={Math.round(estimate) === Math.round(input.deliveredKwh)}
+            onClick={() => set("deliveredKwh", Math.round(estimate))}
+          >
+            Bruk dette ladevolumet
+          </button>
+        </div>
+      </details>
+  );
 }
 
 /* ---------------- Se hele regnestykket ---------------- */
@@ -196,6 +303,7 @@ export function CalcControls({
           onChange={(v) => set("salePrice", v)}
         />
       </div>
+      <VolumeHelper input={input} set={set} />
       <button type="button" className="link-btn calc-reset" onClick={() => replace(DEFAULT_INPUT)}>
         Tilbakestill til eksemplet
       </button>
@@ -233,12 +341,14 @@ export function Equipment({ input, result: r, set, replace }: { input: PlannerIn
         }
       />
       <Slider
-        label="Batterienheter"
-        value={input.batteryUnits}
+        label="Batterikapasitet"
+        value={r.batteryKwh}
         min={0}
-        max={14}
-        step={1}
-        onChange={(v) => set("batteryUnits", v)}
+        max={BATTERY_UNIT.kwh * 14}
+        step={BATTERY_UNIT.kwh}
+        unit="kWh"
+        format={int}
+        onChange={(v) => set("batteryUnits", Math.round(v / BATTERY_UNIT.kwh))}
         hint={`${input.batteryUnits} × ${BATTERY_UNIT.kwh} kWh = ${kwh(r.batteryKwh)} brukbar kapasitet, ${int(r.batteryKw)} kW kontinuerlig utladning.`}
       />
       <p className="derived">
@@ -275,12 +385,38 @@ export function Equipment({ input, result: r, set, replace }: { input: PlannerIn
 }
 
 const SUPPORT_OPTIONS: { value: SupportMode; label: string }[] = [
-  { value: "amount", label: "Søkebeløp" },
-  { value: "score", label: "Ønsket score" },
+  { value: "score", label: "Kr per kW" },
+  { value: "amount", label: "Eget søkebeløp" },
   { value: "none", label: "Ingen støtte" },
 ];
 
+const signed = (v: number) => (v < 0 ? `− ${krExact(-v)}` : v > 0 ? `+ ${krExact(v)}` : krExact(0));
+
 export function Investment({ result: r, input, set }: { result: PlannerResult; input: PlannerInput; set: Setter }) {
+  const p = ASSUMPTIONS.componentPrices;
+  const b = r.supportBasis;
+  const dKw = r.nameplateKw - STANDARD_PACKAGE.chargers * STANDARD_PACKAGE.chargerKw;
+  const dKwp = input.solarKwp - STANDARD_PACKAGE.solarKwp;
+  const dKwh = r.batteryKwh - STANDARD_PACKAGE.batteryUnits * BATTERY_UNIT.kwh;
+  const rows: { id: string; label: string; value: number | null }[] = [
+    {
+      id: "req",
+      label:
+        input.supportMode === "score"
+          ? `Valgt DC-ladeeffekt: ${int(r.nameplateKw)} kW × ${int(input.supportScore)} kr/kW`
+          : input.supportMode === "amount"
+            ? "Eget søkebeløp"
+            : "Ingen støtte valgt",
+      value: b.requested,
+    },
+    { id: "cap", label: "Høyeste støtte per prosjekt", value: b.cap },
+    {
+      id: "rate",
+      label: r.investment === null ? "60 % av totalsummen" : `60 % av totalsummen ${krExact(r.investment)}`,
+      value: b.rateCap,
+    },
+  ];
+  const used = rows.reduce((best, row) => (row.value !== null && row.value < (best.value ?? Infinity) ? row : best), rows[0]);
   return (
     <article className="card">
       <h3>Investering og støtte</h3>
@@ -302,10 +438,44 @@ export function Investment({ result: r, input, set }: { result: PlannerResult; i
         )}{" "}
         Eventuelt anleggsbidrag avklares med nettselskapet.
       </p>
+
       <table className="ledger">
         <tbody>
-          <tr>
-            <th scope="row">Komplett installasjon</th>
+          {!r.standardPackage && (
+            <tr>
+              <th scope="row">Standardpakken</th>
+              <td>{krExact(STANDARD_PACKAGE.price)}</td>
+            </tr>
+          )}
+          {p && dKw !== 0 && (
+            <tr>
+              <th scope="row">
+                Ladeeffekt {dKw > 0 ? "+" : "−"}
+                {int(Math.abs(dKw))} kW<span className="how">{int(p.perChargerKw)} kr per kW</span>
+              </th>
+              <td>{signed(dKw * p.perChargerKw)}</td>
+            </tr>
+          )}
+          {p && dKwp !== 0 && (
+            <tr>
+              <th scope="row">
+                Solceller {dKwp > 0 ? "+" : "−"}
+                {nb(Math.abs(dKwp), 1)} kWp<span className="how">{int(p.perSolarKwp)} kr per kWp</span>
+              </th>
+              <td>{signed(dKwp * p.perSolarKwp)}</td>
+            </tr>
+          )}
+          {p && dKwh !== 0 && (
+            <tr>
+              <th scope="row">
+                Batteri {dKwh > 0 ? "+" : "−"}
+                {int(Math.abs(dKwh))} kWh<span className="how">{int(p.perBatteryKwh)} kr per kWh</span>
+              </th>
+              <td>{signed(dKwh * p.perBatteryKwh)}</td>
+            </tr>
+          )}
+          <tr className="total">
+            <th scope="row">Komplett installasjon (totalsum)</th>
             <td>{r.investment === null ? "avklares" : krExact(r.investment)}</td>
           </tr>
           <tr className="support">
@@ -319,6 +489,28 @@ export function Investment({ result: r, input, set }: { result: PlannerResult; i
           <tr className="extra">
             <th scope="row">Anleggsbidrag</th>
             <td>avklares med nettselskapet</td>
+          </tr>
+        </tbody>
+      </table>
+      {!r.standardPackage && p && (
+        <p className="field-hint">
+          Prisen for utstyr som avviker fra standardpakken er et anslag og må bekreftes i tilbudet.
+        </p>
+      )}
+
+      <h4>Slik er støtten beregnet</h4>
+      <p className="field-hint">Anslått støtte er det laveste av disse tre beløpene:</p>
+      <table className="ledger support-calc">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} className={row === used ? "is-used" : undefined}>
+              <th scope="row">{row.label}</th>
+              <td>{row.value === null ? "avklares" : krExact(row.value)}</td>
+            </tr>
+          ))}
+          <tr className="total">
+            <th scope="row">Anslått Enova-støtte</th>
+            <td>{krExact(r.support)}</td>
           </tr>
         </tbody>
       </table>
@@ -341,25 +533,18 @@ export function Investment({ result: r, input, set }: { result: PlannerResult; i
         )}
         {input.supportMode === "score" && (
           <NumberField
-            label="Ønsket rangeringsscore"
+            label="Sats per kW DC-ladeeffekt"
             value={input.supportScore}
             unit="kr per kW"
             onChange={(v) => set("supportScore", v)}
-            hint={`${int(input.supportScore)} kr × ${nb(r.availableKw, 1)} kW = ${krExact(input.supportScore * r.availableKw)}, høyst 3 mill. kr og 60 % av godkjente kostnader.`}
           />
         )}
-        {input.supportMode !== "none" && (
-          <p className="rank-figure">
-            <span className="big">{int(r.krPerKw)}</span> kr støtte per kW ladeeffekt
-          </p>
-        )}
         <p className="field-hint">
-          Enova rangerer søknadene på støtte delt på dokumentert samtidig ladeeffekt i minst én time (her{" "}
-          {nb(r.availableKw, 1)} kW), forutsatt ingen annen offentlig støtte. Lavere tall gir bedre plass.
-          {r.supportRate !== null && r.support > 0 && ` Støtten tilsvarer ${pcText(r.supportRate * 100)} av kostnadene.`}
-          {r.supportLimitedBy === "cap" && " Støtten er begrenset av taket på 3 mill. kr."}
-          {r.supportLimitedBy === "rate" && " Støtten er begrenset til 60 % av godkjente kostnader."} Batteriets
-          støtteberettigelse må vurderes mot behov og vilkår. Ingen støtte er garantert.
+          Enova rangerer søknadene på støtte delt på dokumentert samtidig ladeeffekt i minst én time
+          {r.availableKw > 0 && r.support > 0 && ` (her ${int(r.krPerKw)} kr per kW ved ${nb(r.availableKw, 1)} kW)`},
+          forutsatt ingen annen offentlig støtte. Lavere tall gir bedre plass.
+          {r.supportRate !== null && r.support > 0 && ` Støtten tilsvarer ${pcText(r.supportRate * 100)} av totalsummen.`}{" "}
+          Batteriets støtteberettigelse må vurderes mot behov og vilkår. Ingen støtte er garantert.
         </p>
       </div>
     </article>
@@ -400,6 +585,19 @@ export function Operation({ result: r, input }: { result: PlannerResult; input: 
       <p className="field-hint">
         {r.investment !== null && r.paybackYears === null ? NOT_PAID_BACK : PAYBACK_NOTE}
       </p>
+      {r.netAfterPeriod !== null && (
+        <>
+          <div className="facts">
+            <p>
+              <span className="big">{signedKr(r.netAfterPeriod)}</span> netto over {r.periodYears} år etter investering
+            </p>
+          </div>
+          <p className="field-hint">
+            {r.periodYears} × {signedKr(r.annualNet)} − egen investering {krExact(r.netInvestment!)}. Fullt ladesalg fra
+            år 1, faste priser, før renter, skatt og større reinvesteringer.
+          </p>
+        </>
+      )}
 
       <h4>Med gradvis oppstart</h4>
       <table className="ledger">
@@ -424,12 +622,6 @@ export function Operation({ result: r, input }: { result: PlannerResult; input: 
             : `${NOT_PAID_BACK} `}
         Samme effekttopper, driftskostnader og solfordeling som ved full drift.
       </p>
-      {r.netAfterPeriod !== null && (
-        <p className="field-hint">
-          Akkumulert netto etter investering over {r.periodYears} år: <strong>{krExact(r.netAfterPeriod)}</strong> ved
-          fullt volum fra år 1. Faste priser, før renter, skatt og større reinvesteringer.
-        </p>
-      )}
       <p className="field-hint">{DIESEL_NOTE}</p>
     </article>
   );
@@ -461,18 +653,22 @@ export function PowerAndEnergy({ result: r, input }: { result: PlannerResult; in
           </tr>
           <tr>
             <th scope="row">Med ladere uten styring</th>
-            <td>{int(input.peakUnmanagedKw)}</td>
+            <td>{int(p.unmanagedPeakKw)}</td>
             <td>{krExact(p.unmanagedCost)}</td>
           </tr>
           <tr>
             <th scope="row">Med ladere og styring</th>
-            <td>{int(input.peakManagedKw)}</td>
+            <td>{int(p.peakAfterKw)}</td>
             <td>{krExact(p.managedCost)}</td>
           </tr>
         </tbody>
       </table>
       <p className="field-hint">
         Styringen reduserer effektkostnaden med {krExact(p.controlSaving)} per år sammenlignet med ustyrt lading.
+        {p.peakAfterKw > input.peakManagedKw + 0.5 &&
+          ` Med ${int(r.batteryKw)} kW batteri holdes toppen på ${int(p.peakAfterKw)} kW, ikke ${int(input.peakManagedKw)} kW.`}{" "}
+        Toppen uten styring er skalert med ladeeffekten ({int(input.peakUnmanagedKw)} kW ved{" "}
+        {int(STANDARD_PACKAGE.chargers * STANDARD_PACKAGE.chargerKw)} kW).
         Regnestykket fører økningen fra dagens bygg til styrt drift én gang. Effektledd {nb(input.powerFeeSummer)} kr/kW
         per måned april–september og {nb(input.powerFeeWinter)} kr/kW oktober–mars.
       </p>

@@ -7,6 +7,7 @@ import {
   osloNoon,
   parseEnovaDeadlines,
   parseManualDeadlines,
+  withCheckedDeadlines,
 } from "./deadlines";
 
 const info = (dates = BASELINE_DEADLINES, status: "ok" | "manual" | "fallback" = "ok") => ({ dates, status });
@@ -101,5 +102,45 @@ describe("manuell korrigering", () => {
     ]);
     expect(parseManualDeadlines(undefined)).toEqual([]);
     expect(osloNoon("2027-13-40")).toBeNull();
+  });
+});
+
+describe("3. februar forsvinner ikke (25.11.2026)", () => {
+  const now = at("2026-11-25T16:00:00+01:00");
+
+  test("februar med midnatt i dataene og juni kl. 12: begge leses", () => {
+    const html = `<p>Søknadsfrist 3. februar 2027</p><script>{"start":"2026-11-01T00:00:00+01:00","deadline":"2027-02-03T00:00:00+01:00"}</script>
+      <time datetime="2027-06-03T12:00:00+02:00">3. juni 2027 kl. 12</time>`;
+    expect(parseEnovaDeadlines(html, now).map((d) => d.toISOString())).toEqual([
+      "2027-02-03T11:00:00.000Z",
+      "2027-06-03T10:00:00.000Z",
+    ]);
+  });
+
+  test("bare dato i dataene", () => {
+    const html = `<p>3. februar 2027</p><script>{"date":"2027-02-03"}</script>`;
+    expect(parseEnovaDeadlines(html, now).map((d) => d.toISOString())).toEqual(["2027-02-03T11:00:00.000Z"]);
+  });
+
+  test("henting uten februar: den kontrollerte fristen beholdes, neste frist er 3. februar", () => {
+    const fetched = BASELINE_DEADLINES.slice(1).map((d) => new Date(d));
+    const { dates, missing } = withCheckedDeadlines(fetched, BASELINE_DEADLINES, now);
+    expect(missing.map((d) => d.toISOString())).toEqual(["2027-02-03T11:00:00.000Z"]);
+    const v = deadlineView({ dates: dates.map((d) => d.toISOString()), status: "ok" }, now);
+    expect(v.kind === "next" && formatDeadline(v.date)).toBe("3. februar 2027 kl. 12.00");
+  });
+
+  test("flytter Enova fristen, gjelder Enovas dato", () => {
+    const fetched = [new Date("2027-02-10T11:00:00Z"), ...BASELINE_DEADLINES.slice(1).map((d) => new Date(d))];
+    const { dates, missing } = withCheckedDeadlines(fetched, BASELINE_DEADLINES, now);
+    expect(missing).toHaveLength(0);
+    expect(dates[0].toISOString()).toBe("2027-02-10T11:00:00.000Z");
+  });
+
+  test("etter 3. februar kl. 12 er neste frist 3. juni", () => {
+    const after = at("2027-02-03T11:00:00Z");
+    const { dates } = withCheckedDeadlines([], BASELINE_DEADLINES, after);
+    const v = deadlineView({ dates: dates.map((d) => d.toISOString()), status: "ok" }, after);
+    expect(v.kind === "next" && formatDeadline(v.date)).toBe("3. juni 2027 kl. 12.00");
   });
 });

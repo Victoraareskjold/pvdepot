@@ -86,15 +86,20 @@ const ymdOf = (d: Date) => {
 };
 
 /**
- * Leser fristene ut av HTML-en fra Enovas søknadsside.
+ * Leser fristene ut av HTML-en fra Enovas søknadsside. Alle fristene i
+ * programmet er kl. 12.00, så en frist er en dato, og tidspunktet settes til
+ * kl. 12.00 norsk tid. Datoene finnes på tre måter, og alle tre tas med:
  *
- * 1. Datoverdier med tidssone (f.eks. «2027-02-03T11:00:00.000Z» i sidens
- *    data eller `<time datetime>`) som er kl. 12.00 norsk tid.
- * 2. Hvis siden også har datoer i teksten («3. februar 2027», «03.02.2027»),
- *    beholdes bare datoverdiene som står i teksten. Slik velger vi fristene og
- *    ikke publiserings- eller endringsdatoer.
- * 3. Uten datoverdier brukes tekstdatoer som står like foran «kl. 12».
- * 4. Bare framtidige frister tas med.
+ * 1. Datoverdier med tidssone som er kl. 12.00 norsk tid (f.eks.
+ *    «2027-02-03T11:00:00.000Z» i sidens data eller `<time datetime>`).
+ * 2. Andre datoverdier (annet klokkeslett, f.eks. midnatt, eller bare dato)
+ *    når den samme datoen også står i teksten.
+ * 3. Tekstdatoer rett foran «kl. 12» («3. februar 2027 kl. 12.00», eller en
+ *    tabell med «12.00» i neste celle).
+ *
+ * Har siden datoer i teksten, må datoverdier fra punkt 1 også stå der. Slik
+ * velger vi fristene og ikke publiserings- eller endringsdatoer. Bare
+ * framtidige frister tas med.
  */
 export function parseEnovaDeadlines(html: string, now: Date = new Date()): Date[] {
   const raw = html.replace(/&nbsp;|\u00a0/g, " ");
@@ -112,35 +117,56 @@ export function parseEnovaDeadlines(html: string, now: Date = new Date()): Date[
     add(`${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`, m.index! + m[0].length);
   }
 
-  const iso = new Map<string, Date>();
-  const isoRe = /\b(20\d{2}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})/g;
+  const days = new Set<string>();
+
+  // 1 og 2: datoverdier i HTML-en og sidens data
+  const isoRe = /\b(20\d{2}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?/g;
   for (const m of raw.matchAll(isoRe)) {
-    const d = new Date(m[0]);
-    if (Number.isNaN(d.getTime())) continue;
-    const p = osloParts(d);
-    if (p.h !== 12 || p.min !== 0) continue;
-    iso.set(ymdOf(d), d);
+    if (m[2] !== undefined && m[4] !== undefined) {
+      const d = new Date(m[0]);
+      if (Number.isNaN(d.getTime())) continue;
+      const p = osloParts(d);
+      const ymd = ymdOf(d);
+      const noon = p.h === 12 && p.min === 0;
+      if ((noon && (!textDates.size || textDates.has(ymd))) || textDates.has(ymd)) days.add(ymd);
+      // Et tidspunkt nær midnatt kan bety datoen før i UTC; se også på datoen slik den er skrevet.
+      else if (textDates.has(m[1])) days.add(m[1]);
+    } else if (textDates.has(m[1])) {
+      days.add(m[1]);
+    }
   }
 
-  let found: Date[];
-  if (iso.size) {
-    found = [...iso.entries()].filter(([ymd]) => !textDates.size || textDates.has(ymd)).map(([, d]) => d);
-  } else {
-    found = [];
-    for (const [ymd, end] of textDates) {
-      // «3. februar 2027 kl. 12.00», «3. februar 2027, klokken 12» eller en tabell med «12.00» rett etter
-      if (/^[\s,|–-]*(?:(?:klokken|kl\.?)\s*12(?:[.:]00)?\b|12[.:]00\b)/i.test(text.slice(end, end + 40))) {
-        const d = osloNoon(ymd);
-        if (d) found.push(d);
-      }
-    }
+  // 3: tekstdatoer rett foran «kl. 12»
+  for (const [ymd, end] of textDates) {
+    if (/^[\s,|–-]*(?:(?:klokken|kl\.?)\s*12(?:[.:]00)?\b|12[.:]00\b)/i.test(text.slice(end, end + 40))) days.add(ymd);
   }
 
   // Bare framtidige frister (publiserings- og endringsdatoer ligger bak oss),
   // høyst fem år fram og høyst 24 frister.
-  const ok = found.filter((d) => d.getTime() > now.getTime() && d.getUTCFullYear() <= now.getUTCFullYear() + 5);
+  const ok = [...days]
+    .map((ymd) => osloNoon(ymd))
+    .filter((d): d is Date => !!d && d.getTime() > now.getTime() && d.getUTCFullYear() <= now.getUTCFullYear() + 5);
   ok.sort((a, b) => a.getTime() - b.getTime());
   return ok.length > 24 ? [] : ok;
+}
+
+/**
+ * Fristene som er kontrollert manuelt (BASELINE_DEADLINES), forsvinner ikke
+ * før de er passert, selv om hentingen ikke finner dem. Flytter Enova en
+ * frist, ligger den nye datoen nær den gamle; da gjelder Enovas dato.
+ * Gir listen og hvilke kontrollerte frister som manglet hos Enova.
+ */
+export function withCheckedDeadlines(
+  fetched: Date[],
+  checked: string[] = BASELINE_DEADLINES,
+  now: Date = new Date(),
+): { dates: Date[]; missing: Date[] } {
+  const near = 45 * 86_400_000;
+  const missing = checked
+    .map((iso) => new Date(iso))
+    .filter((c) => c.getTime() > now.getTime() && !fetched.some((f) => Math.abs(f.getTime() - c.getTime()) < near));
+  const dates = [...fetched, ...missing].sort((a, b) => a.getTime() - b.getTime());
+  return { dates, missing };
 }
 
 /** Manuell korrigering: «2027-02-03, 2027-06-03» eller fulle ISO-tidspunkter. */

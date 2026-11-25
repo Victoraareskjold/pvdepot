@@ -91,7 +91,9 @@ describe("kundens oppsett i henvendelsen", () => {
     expect(text).toContain("(standardverdier)");
     expect(text).toMatch(/Investering: 7\s495\s620 kr/);
     expect(text).toMatch(/Årlig netto før renter og skatt: 1\s238\s964 kr/);
-    expect(text).toContain("3,89 år");
+    expect(text).toContain("3,73 år");
+    expect(text).toMatch(/Enova-støtte: 2\s880\s000 kr/);
+    expect(text).toMatch(/Netto over 10 år etter investering: 7\s774\s019 kr/);
   });
 
   test("endringer vises med standard og kundens verdi, med enheter", () => {
@@ -101,7 +103,7 @@ describe("kundens oppsett i henvendelsen", () => {
     expect(text).toContain("Salgspris til andre: 4,5 kr/kWh → 3,5 kr/kWh");
     expect(text).toContain("Batterienheter: 7 → 4");
     expect(text).toContain("(standard)");
-    expect(text).toContain("må avklares");
+    expect(text).toMatch(/Investering: 5\s694\s720 kr/);
   });
 
   test("endret og satt tilbake regnes ikke som endring, også via fordelingsslideren", () => {
@@ -113,13 +115,13 @@ describe("kundens oppsett i henvendelsen", () => {
   });
 
   test("støttevalget skrives i klartekst", () => {
-    const ch = setupChanges({ ...DEFAULT_INPUT, supportMode: "score" }).map((c) => ({
+    const ch = setupChanges({ ...DEFAULT_INPUT, supportMode: "amount" }).map((c) => ({
       label: c.label,
       from: c.from.replace(/\s/g, " "),
       to: c.to.replace(/\s/g, " "),
     }));
     expect(ch).toEqual([
-      { label: "Støtte", from: "Søkebeløp 2 680 000 kr", to: "Fra ønsket score (4 000 kr/kW)" },
+      { label: "Støtte", from: "DC-ladeeffekt × 4 000 kr/kW", to: "Søkebeløp 2 680 000 kr" },
     ]);
   });
 });

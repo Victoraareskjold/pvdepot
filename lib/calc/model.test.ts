@@ -8,9 +8,15 @@ import {
   type PlannerInput,
 } from "./model";
 
-/** Kontrolltallene fra regnearket og kalkulatorbeskrivelsen (Asbjørn, 24.11.2026). */
+/**
+ * Kontrolltallene fra regnearket og kalkulatorbeskrivelsen (Asbjørn, 24.11.2026)
+ * bruker søkebeløpet 2 680 000 kr. Siden 25.11.2026 er standarden i stedet
+ * støtte fra 4 000 kr/kW (se «ny standard» nederst), så kontrollene kjøres med
+ * søkebeløpet for å teste regnearket rad for rad.
+ */
 const line = (r: ReturnType<typeof calculate>, id: string) => r.lines.find((l) => l.id === id)!.value;
-const calc = (patch: Partial<PlannerInput> = {}) => calculate({ ...DEFAULT_INPUT, ...patch });
+const SHEET: Partial<PlannerInput> = { supportMode: "amount", supportAmount: 2_680_000 };
+const calc = (patch: Partial<PlannerInput> = {}) => calculate({ ...DEFAULT_INPUT, ...SHEET, ...patch });
 
 describe("standardeksemplet", () => {
   const r = calc();
@@ -125,11 +131,6 @@ describe("kontroller før publisering", () => {
     expect(r.paybackYears!.toFixed(2)).toBe("6.05");
   });
 
-  test("ønsket score 4 000 kr/kW gir 2 880 000 kr", () => {
-    const r = calc({ supportMode: "score" });
-    expect(r.support).toBe(2_880_000);
-    expect(r.netInvestment).toBe(4_615_620);
-  });
 
   test("støtten stopper på 3 mill. kr", () => {
     const r = calc({ supportMode: "amount", supportAmount: 5_000_000 });
@@ -157,12 +158,14 @@ describe("kontroller før publisering", () => {
 });
 
 describe("utstyr", () => {
-  test("endret utstyr uten komponentpriser: investeringspris må avklares", () => {
-    const r = calc({ chargers: 8 });
-    expect(r.investment).toBeNull();
-    expect(r.netInvestment).toBeNull();
-    expect(r.paybackYears).toBeNull();
-    expect(Number.isFinite(r.annualNet)).toBe(true);
+  test("totalsummen følger utstyret, og standardpakken er nøyaktig 7 495 620 kr", () => {
+    expect(calc().investment).toBe(7_495_620);
+    // 2 ladere til (240 kW) à 2 400 kr/kW
+    expect(calc({ chargers: 8 }).investment).toBe(7_495_620 + 240 * 2_400);
+    // 11 kWp mer sol à 6 500 kr
+    expect(calc({ solarKwp: 200 }).investment).toBe(7_495_620 + 11 * 6_500);
+    // 3 batterienheter færre: 783 kWh à 2 300 kr
+    expect(calc({ batteryUnits: 4 }).investment).toBe(7_495_620 - 783 * 2_300);
   });
 
   test("sol skaleres med kWp, og null kWp gir null sol", () => {
@@ -180,5 +183,63 @@ describe("utstyr", () => {
 
   test("ladevolum fra kjøretøy: 6 biler × 220 km × 250 døgn × 1,0 kWh", () => {
     expect(estimateDeliveredKwh(DEFAULT_INPUT)).toBe(330_000);
+  });
+});
+
+describe("ny standard (Victor, 25.11.2026)", () => {
+  const r = calculate(DEFAULT_INPUT);
+
+  test("støtte = laveste av 720 kW × 4 000 kr, 3 mill. kr og 60 % av totalsummen", () => {
+    expect(r.supportBasis.requested).toBe(2_880_000);
+    expect(r.supportBasis.cap).toBe(3_000_000);
+    expect(r.supportBasis.rateCap).toBeCloseTo(4_497_372, 6);
+    expect(r.support).toBe(2_880_000);
+    expect(r.netInvestment).toBe(4_615_620);
+  });
+
+  test("tilbakebetaling 3,73 år og 7 774 019 kr over 10 år", () => {
+    expect(r.paybackYears!.toFixed(2)).toBe("3.73");
+    expect(Math.round(r.netAfterPeriod!)).toBe(7_774_019);
+    expect(Math.round(r.annualNet)).toBe(1_238_964);
+  });
+
+  test("mer ladeeffekt: støtten stopper på 3 mill. kr", () => {
+    const big = calculate({ ...DEFAULT_INPUT, chargers: 7 }); // 840 kW × 4 000 = 3 360 000
+    expect(big.support).toBe(3_000_000);
+    expect(big.supportLimitedBy).toBe("cap");
+  });
+
+  test("lite anlegg: støtten stopper på 60 % av totalsummen", () => {
+    const small = calculate({ ...DEFAULT_INPUT, chargers: 4, solarKwp: 0, batteryUnits: 0 });
+    // 7 495 620 − 240 kW × 2 400 − 189 × 6 500 − 1 827 × 2 300
+    expect(small.investment).toBe(7_495_620 - 576_000 - 1_228_500 - 4_202_100);
+    expect(small.support).toBeCloseTo(small.investment! * 0.6, 6);
+    expect(small.supportLimitedBy).toBe("rate");
+  });
+});
+
+describe("nettoppen avhenger av batteriet (25.11.2026)", () => {
+  test("standard og fire enheter: 300 kW", () => {
+    expect(calculate(DEFAULT_INPUT).power.peakAfterKw).toBe(300);
+    expect(calculate({ ...DEFAULT_INPUT, batteryUnits: 4 }).power.peakAfterKw).toBe(300);
+  });
+
+  test("to enheter (260 kW) holder toppen på 390 kW, uten batteri blir den 650 kW", () => {
+    expect(calculate({ ...DEFAULT_INPUT, batteryUnits: 2 }).power.peakAfterKw).toBe(390);
+    const none = calculate({ ...DEFAULT_INPUT, batteryUnits: 0 });
+    expect(none.power.peakAfterKw).toBe(650);
+    expect(none.lines.find((l) => l.id === "power")!.value).toBe((150 - 650) * 942);
+  });
+
+  test("toppen uten styring følger ladeeffekten", () => {
+    const r = calculate({ ...DEFAULT_INPUT, chargers: 3, batteryUnits: 0 });
+    expect(r.power.unmanagedPeakKw).toBeCloseTo(150 + 500 * (360 / 720), 9);
+    expect(r.power.peakAfterKw).toBeCloseTo(400, 9);
+  });
+
+  test("uten batteri lønner anlegget seg ikke bedre enn med", () => {
+    const withB = calculate(DEFAULT_INPUT);
+    const without = calculate({ ...DEFAULT_INPUT, batteryUnits: 0 });
+    expect(without.annualNet).toBeLessThan(withB.annualNet);
   });
 });

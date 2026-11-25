@@ -96,7 +96,7 @@ export default function ScrollWorld({
           ? `Årlig netto fra anlegget ${krExact(result.annualNet)}. Investeringspris for dette utstyret må avklares.`
           : result.paybackYears === null
             ? `Egen investering ${krExact(result.netInvestment)}. Med disse forutsetningene tjenes investeringen ikke inn.`
-            : `Egen investering ${krExact(result.netInvestment)}. Årlig netto ${krExact(result.annualNet)} gir ${dec(result.paybackYears)} års tilbakebetaling ved fullt ladesalg.`,
+            : `Egen investering ${krExact(result.netInvestment)}. ${dec(result.paybackYears)} års tilbakebetaling ved fullt ladesalg, og ${krExact(result.netAfterPeriod!)} netto over ${result.periodYears} år.`,
     });
     return out;
   }, [result, input.chargers, input.chargerKw, input.solarKwp, input.batteryUnits, input.peakManagedKw, input.peakUnmanagedKw]);
@@ -134,7 +134,10 @@ export default function ScrollWorld({
     };
   }, [stops.length]);
 
-  const stop = stops[index];
+  // Antall steg endres når sol slås av eller på (solsteget faller bort).
+  // Hold indeksen innenfor til scroll-effekten har regnet den ut på nytt.
+  const at = Math.min(index, stops.length - 1);
+  const stop = stops[at];
 
   // Hopp til det som kommer etter seksjonen.
   const skip = () => {
@@ -192,13 +195,13 @@ export default function ScrollWorld({
                   <li
                     key={s.shot}
                     className={
-                      i === index ? "is-current" : i < index ? "is-done" : ""
+                      i === at ? "is-current" : i < at ? "is-done" : ""
                     }
                   />
                 ))}
               </ol>
               <span className="scrolly-count">
-                {index + 1} av {stops.length}
+                {at + 1} av {stops.length}
               </span>
               <button type="button" className="scrolly-skip" onClick={skip}>
                 Hopp videre

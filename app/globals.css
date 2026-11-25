@@ -2161,3 +2161,17 @@ input[type="range"]::-moz-range-thumb {
     font-size: 15px;
   }
 }
+
+/* Støtteutregningen: beløpet som blir støtten er uthevet (25.11.2026) */
+.support-calc tr.is-used th,
+.support-calc tr.is-used td {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.support-calc tr.is-used th::after {
+  content: " (laveste)";
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--ink-2);
+}

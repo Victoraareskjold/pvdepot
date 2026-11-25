@@ -5,6 +5,7 @@ import {
   ENOVA_DEADLINES_URL,
   parseEnovaDeadlines,
   parseManualDeadlines,
+  withCheckedDeadlines,
   type DeadlineInfo,
 } from "./calc/deadlines";
 
@@ -18,6 +19,9 @@ import {
  *   tømmer den ikke), og vi varsler administrator.
  * - Er mellomlageret tomt og hentingen feiler, brukes listen som ble
  *   kontrollert 24.11.2026 (status «fallback»).
+ * - Fristene i den kontrollerte listen beholdes til de er passert, også om
+ *   hentingen ikke finner dem (`withCheckedDeadlines`). Neste frist er da
+ *   alltid 3. februar 2027 fram til kl. 12.00 den dagen.
  * - Manuell korrigering: miljøvariabelen ENOVA_DEADLINES («2027-02-03,
  *   2027-06-03, …», kl. 12.00 norsk tid) overstyrer alt.
  * - Varsling: DEADLINES_ALERT_WEBHOOK (f.eks. en Slack-webhook) får en
@@ -38,7 +42,7 @@ const fetchFromEnova = unstable_cache(
     if (!dates.length) throw new Error("Fant ingen framtidige søknadsfrister i siden til Enova");
     return { dates: dates.map((d) => d.toISOString()), fetchedAt: new Date().toISOString() };
   },
-  ["enova-deadlines-v1"],
+  ["enova-deadlines-v2"],
   { revalidate: DAY, tags: ["enova-deadlines"] },
 );
 
@@ -69,8 +73,14 @@ export async function getDeadlines(): Promise<DeadlineInfo> {
     return { dates: manual.map((d) => d.toISOString()), status: "manual", source: "Manuelt korrigert", fetchedAt: null };
   }
   try {
-    const { dates, fetchedAt } = await fetchFromEnova();
-    return { dates, status: "ok", source: ENOVA_DEADLINES_URL, fetchedAt };
+    const { dates: fetched, fetchedAt } = await fetchFromEnova();
+    const { dates, missing } = withCheckedDeadlines(fetched.map((d) => new Date(d)));
+    if (missing.length) {
+      console.warn(
+        `[frister] Enova-siden mangler kontrollerte frister: ${missing.map((d) => d.toISOString()).join(", ")}. Beholdt til de er passert.`,
+      );
+    }
+    return { dates: dates.map((d) => d.toISOString()), status: "ok", source: ENOVA_DEADLINES_URL, fetchedAt };
   } catch (error) {
     await alertAdmin(error);
     return { dates: BASELINE_DEADLINES, status: "fallback", source: BASELINE_SOURCE, fetchedAt: null };

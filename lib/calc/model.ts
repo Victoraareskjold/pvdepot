@@ -32,9 +32,13 @@ export interface PlannerInput {
 
   /* Enova */
   supportMode: SupportMode;
-  /** Søkebeløp når supportMode = "amount" */
+  /**
+   * score (standard): valgt DC-ladeeffekt × sats (4 000 kr/kW).
+   * amount: eget søkebeløp. none: ingen støtte. Alltid høyst 3 mill. kr og
+   * 60 % av totalsummen.
+   */
   supportAmount: number;
-  /** Ønsket rangeringsscore, kr per kW, når supportMode = "score" */
+  /** kr per kW valgt DC-ladeeffekt når supportMode = "score" */
   supportScore: number;
 
   /* Strøm og nettleie */
@@ -67,7 +71,7 @@ export const DEFAULT_INPUT: PlannerInput = {
   solarKwp: STD.solarKwp,
   batteryUnits: STD.batteryUnits,
 
-  supportMode: "amount",
+  supportMode: "score",
   supportAmount: STD.support,
   supportScore: A.defaultScoreKrPerKw,
 
@@ -117,6 +121,15 @@ export interface PlannerResult {
   supportRate: number | null;
   krPerKw: number;
   supportLimitedBy: "cap" | "rate" | null;
+  /** Grunnlaget for støtten: det laveste av de tre blir støtten */
+  supportBasis: {
+    /** Valgt DC-ladeeffekt × sats, eller eget søkebeløp (0 ved ingen støtte) */
+    requested: number;
+    /** 3 mill. kr */
+    cap: number;
+    /** 60 % av totalsummen (null når prisen ikke er kjent) */
+    rateCap: number | null;
+  };
   netInvestment: number | null;
 
   energy: {
@@ -139,6 +152,9 @@ export interface PlannerResult {
 
   power: {
     feePerKwYear: number;
+    /** Nettopp med ladere uten styring, skalert med ladeeffekten */
+    unmanagedPeakKw: number;
+    /** Nettopp med styring: målet, men aldri lavere enn batteriet klarer */
     peakAfterKw: number;
     beforeCost: number;
     unmanagedCost: number;
@@ -178,13 +194,11 @@ export function packagePrice(i: Pick<PlannerInput, "chargers" | "chargerKw" | "s
   if (isStandardPackage(i)) return STD.price;
   const p = A.componentPrices;
   if (!p) return null;
-  const chargerDelta =
-    (i.chargers - STD.chargers) * p.perCharger + (i.chargers * i.chargerKw - STD.chargers * STD.chargerKw) * p.perChargerKw;
   const price =
     STD.price +
-    chargerDelta +
+    (i.chargers * i.chargerKw - STD.chargers * STD.chargerKw) * p.perChargerKw +
     (i.solarKwp - STD.solarKwp) * p.perSolarKwp +
-    (i.batteryUnits - STD.batteryUnits) * p.perBatteryUnit;
+    (i.batteryUnits - STD.batteryUnits) * BATTERY_UNIT.kwh * p.perBatteryKwh;
   return Math.max(0, price);
 }
 
@@ -250,7 +264,7 @@ export function calculate(raw: PlannerInput): PlannerResult {
   const investment = packagePrice(i);
   const eligibleCost = investment === null ? null : investment * A.eligibleShare;
   const caps = [A.enovaMaxSupport, eligibleCost === null ? Infinity : eligibleCost * A.enovaMaxRate];
-  const wanted = i.supportMode === "none" ? 0 : i.supportMode === "score" ? i.supportScore * availableKw : i.supportAmount;
+  const wanted = i.supportMode === "none" ? 0 : i.supportMode === "score" ? i.supportScore * nameplateKw : i.supportAmount;
   const support = Math.max(0, Math.min(wanted, ...caps));
   const supportLimitedBy = wanted > support ? (caps[0] <= caps[1] ? "cap" : "rate") : null;
   const supportRate = eligibleCost && eligibleCost > 0 ? support / eligibleCost : null;
@@ -289,15 +303,27 @@ export function calculate(raw: PlannerInput): PlannerResult {
 
   // Effektledd: samme topp hver måned, seks sommer- og seks vintermåneder.
   const feePerKwYear = 6 * (i.powerFeeSummer + i.powerFeeWinter);
+  // Nettopp uten styring følger ladeeffekten (650 kW ved 720 kW i eksemplet).
+  // Styringen holder toppen på målet (300 kW) bare så langt batteriet har
+  // effekt til å kappe den: toppen blir aldri lavere enn ustyrt topp minus
+  // batteriets kontinuerlige utladningseffekt (Asbjørn 24.11: 300 kW gjelder
+  // bare når batteriet tillater det).
   const charging = i.deliveredKwh > 0 && i.chargers > 0;
-  const peakAfterKw = charging ? i.peakManagedKw : i.peakBeforeKw;
+  const refKw = STD.chargers * STD.chargerKw;
+  const unmanagedPeakKw = charging
+    ? i.peakBeforeKw + Math.max(0, i.peakUnmanagedKw - i.peakBeforeKw) * (nameplateKw / refKw)
+    : i.peakBeforeKw;
+  const peakAfterKw = charging
+    ? Math.min(unmanagedPeakKw, Math.max(i.peakManagedKw, unmanagedPeakKw - batteryKw))
+    : i.peakBeforeKw;
   const power = {
     feePerKwYear,
+    unmanagedPeakKw,
     peakAfterKw,
     beforeCost: i.peakBeforeKw * feePerKwYear,
-    unmanagedCost: i.peakUnmanagedKw * feePerKwYear,
-    managedCost: i.peakManagedKw * feePerKwYear,
-    controlSaving: (i.peakUnmanagedKw - i.peakManagedKw) * feePerKwYear,
+    unmanagedCost: unmanagedPeakKw * feePerKwYear,
+    managedCost: peakAfterKw * feePerKwYear,
+    controlSaving: (unmanagedPeakKw - peakAfterKw) * feePerKwYear,
   };
 
   const k = (n: number) => Math.round(n).toLocaleString("nb-NO");
@@ -376,6 +402,7 @@ export function calculate(raw: PlannerInput): PlannerResult {
     supportRate,
     krPerKw,
     supportLimitedBy,
+    supportBasis: { requested: wanted, cap: A.enovaMaxSupport, rateCap: eligibleCost === null ? null : eligibleCost * A.enovaMaxRate },
     netInvestment,
     energy: {
       marginalPrice,

@@ -80,18 +80,22 @@ export const ASSUMPTIONS = {
   enovaMinChargerKw: 50,
 
   /**
-   * Komponentpriser for å prise utstyr som avviker fra standardpakken.
-   * null = ingen kvalitetssikrede priser ennå: siden viser «Investeringspris
-   * må avklares» når kunden endrer utstyret. Fylles inn med leverandørpriser
-   * (prisforskjell mot standardpakken), så standardpakken alltid blir
-   * nøyaktig 7 495 620 kr.
+   * Prisforskjell når kunden endrer utstyret i forhold til standardpakken
+   * (Victor, 25.11.2026: totalsummen skal følge sliderne). Standardpakken er
+   * alltid nøyaktig 7 495 620 kr; avviket prises med satsene under.
+   * ANSLAG, ikke kvalitetssikret: Smart Elektro bør bekrefte eller erstatte
+   * dem med leverandørpriser. Satsene gir omtrent denne fordelingen av
+   * standardpakken: ladere 1,73 mill., sol 1,23 mill., batteri 4,20 mill. og
+   * styring, prosjektering og tilkobling 0,34 mill. kr.
    */
-  componentPrices: null as null | {
-    perCharger: number;
-    perChargerKw: number;
-    perSolarKwp: number;
-    perBatteryUnit: number;
-  },
+  componentPrices: {
+    /** kr per kW DC-ladeeffekt, installert */
+    perChargerKw: 2_400,
+    /** kr per kWp solceller, installert */
+    perSolarKwp: 6_500,
+    /** kr per kWh brukbar batterikapasitet, installert */
+    perBatteryKwh: 2_300,
+  } as null | { perChargerKw: number; perSolarKwp: number; perBatteryKwh: number },
 
   /**
    * Andel av investeringen som regnes som godkjent kostnad hos Enova.
@@ -103,7 +107,10 @@ export const ASSUMPTIONS = {
   enovaMaxRate: 0.6,
   enovaMaxSupport: 3_000_000,
   enovaOperatingYears: 5,
-  /** Ønsket rangeringsscore i det alternative budet (kr per kW) */
+  /**
+   * Anslått støtte = laveste av valgt DC-ladeeffekt × 4 000 kr/kW, 3 mill. kr
+   * og 60 % av totalsummen (Victor, 25.11.2026). Satsen kan endres i detaljene.
+   */
   defaultScoreKrPerKw: 4_000,
 
   /** Gradvis oppstart: andel av ladevolumet år 1 og år 2, fullt fra år 3 */
