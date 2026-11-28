@@ -2142,3 +2142,96 @@ input[type="range"]::-moz-range-thumb {
   font-size: 12px;
   color: var(--ink-2);
 }
+
+/* /mini: depotet alene, fyller iframen på forsiden til smartelektrosol.no */
+.mini {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--page);
+}
+
+/* ---------- Støttesjekk 28.11.2026: tydelig resultat ----------
+   Grønt skal se godkjent ut: farget flate og kant rundt hele kortet, et stort
+   hake-merke ved tittelen og grønn tittel. Gult og rødt følger samme mønster,
+   så kunden ser forskjellen med en gang. */
+.verdict.verdict-green,
+.verdict.verdict-yellow,
+.verdict.verdict-red {
+  border: 2px solid var(--verdict-line);
+  border-top-width: 6px;
+  background: var(--verdict-bg);
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.verdict-green {
+  --verdict-line: var(--charge);
+  --verdict-bg: color-mix(in srgb, var(--charge-bright) 12%, white);
+  --verdict-fg: var(--charge);
+}
+
+.verdict-yellow {
+  --verdict-line: var(--energy);
+  --verdict-bg: var(--warn-bg);
+  --verdict-fg: var(--warn);
+}
+
+.verdict-red {
+  --verdict-line: var(--stop);
+  --verdict-bg: var(--stop-bg);
+  --verdict-fg: var(--stop);
+}
+
+.verdict-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 4px 0 14px;
+}
+
+.verdict-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--verdict-line);
+  color: white;
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--verdict-line) 18%, transparent);
+  animation: verdict-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.35) both;
+}
+
+.verdict-yellow .verdict-badge {
+  color: var(--ink);
+}
+
+.verdict-green .verdict-title,
+.verdict-yellow .verdict-title,
+.verdict-red .verdict-title {
+  color: var(--verdict-fg);
+  padding-top: 2px;
+}
+
+.verdict-green .check-count,
+.verdict-yellow .check-count,
+.verdict-red .check-count {
+  color: var(--verdict-fg);
+}
+
+@keyframes verdict-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .verdict-badge {
+    animation: none;
+  }
+}

@@ -752,12 +752,37 @@ export function Assumptions({ input, result: r, set }: { input: PlannerInput; re
   );
 }
 
+/** Hake (grønn), utropstegn (gul) eller kryss (rød) i statusmerket. */
+function VerdictIcon({ verdict }: { verdict: QualifyResult["verdict"] }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 3, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26">
+      {verdict === "green" && <path d="M5 12.5l4.5 4.5L19 7.5" {...common} />}
+      {verdict === "yellow" && (
+        <>
+          <path d="M12 6v8" {...common} />
+          <path d="M12 18.5v.01" {...common} strokeWidth={3.6} />
+        </>
+      )}
+      {verdict === "red" && <path d="M7 7l10 10M17 7L7 17" {...common} />}
+    </svg>
+  );
+}
+
 export function Check({ check, onCta }: { check: QualifyResult; onCta?: () => void }) {
   const v = VERDICT_TEXT[check.verdict];
   return (
     <article className={`card verdict verdict-${check.verdict}`} aria-live="polite">
       <h3>Støttesjekk</h3>
-      <p className="verdict-title">{v.title}</p>
+      <div className="verdict-head">
+        {check.verdict !== "incomplete" && (
+          // key: merket spretter inn på nytt når resultatet endres
+          <span key={check.verdict} className="verdict-badge" aria-hidden="true">
+            <VerdictIcon verdict={check.verdict} />
+          </span>
+        )}
+        <p className="verdict-title">{v.title}</p>
+      </div>
       {v.body && <p>{v.body}</p>}
       <p className="check-count">
         {check.answered} av {check.total} spørsmål besvart

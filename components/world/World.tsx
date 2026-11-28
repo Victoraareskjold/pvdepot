@@ -25,6 +25,11 @@ export interface WorldProps extends WorldParams {
   inset: { left: number; top: number; bottom: number };
   /** false = scenen er utenfor skjermen og tegnes ikke */
   active?: boolean;
+  /**
+   * Liten versjon til forsiden på pvwebsites (`/mini`): ingen merkelapper,
+   * enklere bakke og lavere oppløsning.
+   */
+  mini?: boolean;
 }
 
 export default function World(props: WorldProps) {
@@ -35,20 +40,20 @@ export default function World(props: WorldProps) {
   const [dprRange, setDprRange] = useState({ high: 2, low: 1.5 });
   const [dpr, setDpr] = useState(2);
   useEffect(() => {
-    setSmall(window.innerWidth < 760);
-    const high = Math.min(window.devicePixelRatio || 1, 2);
+    setSmall(props.mini || window.innerWidth < 760);
+    const high = Math.min(window.devicePixelRatio || 1, props.mini ? 1.5 : 2);
     const low = high >= 2 ? 1.5 : Math.max(1, high * 0.8);
     setDprRange({ high, low });
     setDpr(high);
     setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, []);
+  }, [props.mini]);
 
   const { bays, vehicleModel, roofM2, batteryKwh, gridUpgrade, chargerKw } = props;
   const layout = useMemo(
     () => computeLayout({ bays, vehicleModel, roofM2, solarCoverage: 0, batteryKwh, gridUpgrade, chargerKw }),
     [bays, vehicleModel, roofM2, batteryKwh, gridUpgrade, chargerKw],
   );
-  const pins = useMemo(() => pinDefs(layout, props.labels), [layout, props.labels]);
+  const pins = useMemo(() => (props.mini ? [] : pinDefs(layout, props.labels)), [layout, props.labels, props.mini]);
   const pinRefs = useRef(new Map<string, HTMLDivElement>());
 
   return (

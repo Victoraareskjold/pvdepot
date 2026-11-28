@@ -37,8 +37,8 @@ Ikke bekreftet ennå (må leses i vilkårs-PDF-en, oppdatert 12.11.2026):
 - Lastebilene lader ved lasterampene på fasaden, som vender mot sørvest (nord er rett opp på skjermen, kompass i scenen). Bilene kjører langs veien, stopper forbi rampen og rygger inn; DC-laderen henger på veggen ved porten. Bare én bil i bevegelse på gården om gangen (`sim.ts`, testet i `sim.test.ts`).
 - Batteriene står foran kontoret, godt synlig.
 - (Kalkylen fra denne runden er erstattet 24.11.2026, se under.)
-- Forsiden: rolig topp (logo «Smart Elektro Lading», ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp.
-- Logoen `public/brand/smartelektrolading.png` er laget fra Sol-logoen (solen byttet med et lyn, «SOL» med «LADING» i Oswald). Midlertidig til Smart Elektro har en offisiell.
+- Forsiden: rolig topp (ingress, én knapp «Få hjelp med Enova-søknaden»), slidere og tre nøkkeltall i et panel ved siden av 3D-scenen, seksjon om hvordan vi hjelper med søknaden, svevende knapp.
+- Logoen vises ikke på siden (fjernet 25.11.2026); den står i menyen på pvwebsites. `public/brand/smartelektrolading.png` og `theme.logo` i `lib/sites.ts` ligger igjen.
 
 ## Runde 20.11.2026 (Asbjørn: «Endringer til Smart Elektro underside lading»)
 
